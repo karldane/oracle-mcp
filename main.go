@@ -13,36 +13,39 @@ func main() {
 	writeEnabled := flag.Bool("write-enabled", false, "Enable write tools (disabled by default for safety)")
 	flag.Parse()
 
-	// Get connection string from environment
-	connString := os.Getenv("ORACLE_CONNECTION_STRING")
-
 	// Check read-only mode
 	readOnly := true
 	if val := os.Getenv("ORACLE_READ_ONLY"); val != "" {
 		readOnly = val != "false"
 	}
 
-	// Create server (will start without DB connection if connString is empty)
-	server, err := oracle.NewServer(connString, readOnly)
+	// Create server - connection strings are now parsed from environment in NewServer
+	server, err := oracle.NewServer(readOnly)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to create server: %v\n", err)
 		os.Exit(1)
 	}
 	defer server.Close()
 
-	// Set write enabled flag
-	server.SetWriteEnabled(*writeEnabled)
+	// Initialize schema cache for all connected databases
+	connections := server.ListConnections()
+	connectedCount := 0
+	for _, conn := range connections {
+		if conn.Connected {
+			connectedCount++
+		}
+	}
 
-	// Initialize schema cache (only if connected)
-	if connString != "" {
-		fmt.Fprintln(os.Stderr, "Initializing schema cache...")
+	if connectedCount > 0 {
+		fmt.Fprintf(os.Stderr, "Initializing schema cache for %d connection(s)...\n", connectedCount)
 		if err := server.Initialize(); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: Failed to initialize schema cache: %v\n", err)
 		}
 		fmt.Fprintln(os.Stderr, "Oracle MCP Server initialized")
 	} else {
-		fmt.Fprintln(os.Stderr, "Oracle MCP Server started in disconnected mode (no database connection)")
-		fmt.Fprintln(os.Stderr, "Note: Tools require ORACLE_CONNECTION_STRING to execute DB operations")
+		fmt.Fprintln(os.Stderr, "Oracle MCP Server started in disconnected mode (no database connections)")
+		fmt.Fprintln(os.Stderr, "Note: Configure ORACLE_CONNECTION_STRING for single connection operation or - ")
+		fmt.Fprintln(os.Stderr, "ORACLE_CONNECTION_STRING_* environment variables for multiple named database connections")
 		fmt.Fprintln(os.Stderr, "All tools are registered and available for self-reporting.")
 	}
 

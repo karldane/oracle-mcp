@@ -6,6 +6,15 @@ import (
 	"time"
 )
 
+// ConnectionInfo holds information about a configured database connection
+type ConnectionInfo struct {
+	Label     string
+	Schema    string
+	Status    string
+	Connected bool
+	Error     string
+}
+
 // SchemaCache holds cached schema information
 type SchemaCache struct {
 	Tables        map[string]*TableInfo `json:"tables"`

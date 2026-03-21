@@ -13,12 +13,42 @@ import (
 	_ "github.com/sijms/go-ora/v2"
 )
 
-// Database handles Oracle database connections and queries
-type Database struct {
-	connString string
-	db         *sql.DB
+// ConnectionStatus represents the status of a database connection
+type ConnectionStatus string
+
+const (
+	StatusConnected    ConnectionStatus = "connected"
+	StatusAvailable    ConnectionStatus = "available"
+	StatusError        ConnectionStatus = "error"
+	StatusDisconnected ConnectionStatus = "disconnected"
+)
+
+// QueryExecutor defines the interface for executing queries against a database
+// This allows for easy mocking in tests
+type QueryExecutor interface {
+	GetAllTableNames(ctx context.Context) ([]string, error)
+	GetTableInfo(ctx context.Context, tableName string) (*TableInfo, error)
+	SearchTables(ctx context.Context, searchTerm string, limit int) ([]string, error)
+	SearchColumns(ctx context.Context, searchTerm string, limit int) (map[string][]ColumnInfo, error)
+	GetConstraints(ctx context.Context, tableName string) ([]ConstraintInfo, error)
+	GetIndexes(ctx context.Context, tableName string) ([]IndexInfo, error)
+	GetRelatedTables(ctx context.Context, tableName string) (*RelatedTables, error)
+	ExecuteQuery(ctx context.Context, sql string, maxRows int) (*QueryResult, error)
+	ExecuteWrite(ctx context.Context, sql string, commit bool) (*WriteResult, error)
+	ExplainQuery(ctx context.Context, sql string) (*ExplainPlan, error)
+	Schema() string
+	IsReadOnly() bool
+}
+
+// Connection represents a single Oracle database connection
+type Connection struct {
+	Label      string
+	ConnString string
+	DB         *sql.DB
 	schema     string
-	readOnly   bool
+	Status     ConnectionStatus
+	ErrorMsg   string
+	ReadOnly   bool
 
 	// Schema cache
 	cache      *SchemaCache
@@ -26,22 +56,113 @@ type Database struct {
 	cachePath  string
 }
 
-// NewDatabase creates a new Oracle database connection
-func NewDatabase(connString string, readOnly bool) (*Database, error) {
-	// Determine cache path
-	cacheDir := os.Getenv("CACHE_DIR")
-	if cacheDir == "" {
-		cacheDir = ".cache"
+// Schema returns the database schema name
+func (c *Connection) Schema() string {
+	return c.schema
+}
+
+// IsReadOnly returns whether this connection is read-only
+func (c *Connection) IsReadOnly() bool {
+	return c.ReadOnly
+}
+
+// DatabaseRegistry manages multiple Oracle database connections
+type DatabaseRegistry struct {
+	connections map[string]*Connection
+	readOnly    bool
+	mu          sync.RWMutex
+
+	// Shared cache directory
+	cacheDir string
+}
+
+// NewDatabaseRegistry creates a new database registry from connection strings
+// env vars. Supports ORACLE_CONNECTION_STRING (single) and ORACLE_CONNECTION_STRING_* (named).
+func NewDatabaseRegistry(readOnly bool) (*DatabaseRegistry, error) {
+	registry := &DatabaseRegistry{
+		connections: make(map[string]*Connection),
+		readOnly:    readOnly,
+		cacheDir:    os.Getenv("CACHE_DIR"),
 	}
 
-	// If no connection string, create a disconnected database for self-reporting
+	if registry.cacheDir == "" {
+		registry.cacheDir = ".cache"
+	}
+
+	// Find all connection string env vars
+	var unnamedConn string
+	namedConns := make(map[string]string) // lowercase label -> original label + conn string
+
+	for _, env := range os.Environ() {
+		parts := strings.SplitN(env, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := parts[0]
+		value := parts[1]
+
+		if key == "ORACLE_CONNECTION_STRING" {
+			unnamedConn = value
+		} else if strings.HasPrefix(key, "ORACLE_CONNECTION_STRING_") {
+			label := strings.ToLower(strings.TrimPrefix(key, "ORACLE_CONNECTION_STRING_"))
+			if label == "" {
+				continue
+			}
+			// Check for collision after lowercasing
+			if existingLabel, exists := namedConns[label]; exists {
+				return nil, fmt.Errorf("connection label collision after case normalization: %s (from %s) and %s both normalize to %s",
+					existingLabel, existingLabel, key, label)
+			}
+			namedConns[label] = value
+		}
+	}
+
+	// Detect conflict: both unnamed and named connections
+	if unnamedConn != "" && len(namedConns) > 0 {
+		return nil, fmt.Errorf("cannot use both ORACLE_CONNECTION_STRING and ORACLE_CONNECTION_STRING_* together; choose one or the other")
+	}
+
+	// Create connections
+	if unnamedConn != "" {
+		// Single unnamed connection
+		conn, err := registry.createConnection("_default", unnamedConn)
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect to default database: %w", err)
+		}
+		registry.connections["_default"] = conn
+	} else if len(namedConns) > 0 {
+		// Named connections - connect to all at startup
+		for label, connString := range namedConns {
+			conn, err := registry.createConnection(label, connString)
+			if err != nil {
+				// Failed connections don't stop startup, but are marked as unavailable
+				conn = &Connection{
+					Label:      label,
+					ConnString: connString,
+					Status:     StatusError,
+					ErrorMsg:   err.Error(),
+					ReadOnly:   readOnly,
+				}
+				fmt.Fprintf(os.Stderr, "Warning: Failed to connect to database %s: %v\n", label, err)
+			}
+			registry.connections[label] = conn
+		}
+
+		if len(registry.connections) == 0 {
+			return nil, fmt.Errorf("no valid database connections configured")
+		}
+	}
+
+	return registry, nil
+}
+
+func (r *DatabaseRegistry) createConnection(label, connString string) (*Connection, error) {
 	if connString == "" {
-		return &Database{
-			connString: "",
-			db:         nil,
-			schema:     "",
-			readOnly:   readOnly,
-			cachePath:  cacheDir,
+		return &Connection{
+			Label:      label,
+			ConnString: "",
+			Status:     StatusDisconnected,
+			ReadOnly:   r.readOnly,
 		}, nil
 	}
 
@@ -57,7 +178,7 @@ func NewDatabase(connString string, readOnly bool) (*Database, error) {
 
 	if err := db.PingContext(ctx); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("failed to connect to database: %w", err)
+		return nil, fmt.Errorf("failed to connect: %w", err)
 	}
 
 	// Get current schema
@@ -68,81 +189,171 @@ func NewDatabase(connString string, readOnly bool) (*Database, error) {
 		return nil, fmt.Errorf("failed to get schema: %w", err)
 	}
 
-	cachePath := filepath.Join(cacheDir, fmt.Sprintf("%s.json", strings.ToLower(schema)))
+	schemaLower := strings.ToLower(schema)
+	cachePath := filepath.Join(r.cacheDir, fmt.Sprintf("%s_%s.json", schemaLower, label))
 
-	d := &Database{
-		connString: connString,
-		db:         db,
+	return &Connection{
+		Label:      label,
+		ConnString: connString,
+		DB:         db,
 		schema:     strings.ToUpper(schema),
-		readOnly:   readOnly,
+		Status:     StatusConnected,
+		ReadOnly:   r.readOnly,
 		cachePath:  cachePath,
-	}
-
-	return d, nil
+	}, nil
 }
 
-// Close closes the database connection
-func (d *Database) Close() error {
-	if d.db != nil {
-		return d.db.Close()
+// ListConnections returns all configured connections with their status
+func (r *DatabaseRegistry) ListConnections() []ConnectionInfo {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	infos := make([]ConnectionInfo, 0, len(r.connections))
+	for label, conn := range r.connections {
+		info := ConnectionInfo{
+			Label:     label,
+			Schema:    conn.schema,
+			Connected: conn.Status == StatusConnected,
+		}
+		if conn.Status == StatusError {
+			info.Schema = conn.ErrorMsg
+		}
+		infos = append(infos, info)
 	}
-	return nil
+	return infos
 }
 
-// IsConnected returns true if the database connection is established
-func (d *Database) IsConnected() bool {
-	return d.db != nil
+// GetConnection returns a connection by label, reconnecting if necessary
+func (r *DatabaseRegistry) GetConnection(label string) (*Connection, error) {
+	r.mu.RLock()
+	conn, exists := r.connections[label]
+	r.mu.RUnlock()
+
+	if !exists {
+		return nil, fmt.Errorf("unknown database connection: %s (use oracle_connections to see available connections)", label)
+	}
+
+	// If already connected, return it
+	if conn.Status == StatusConnected && conn.DB != nil {
+		return conn, nil
+	}
+
+	// Try to reconnect
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// Double-check after acquiring write lock
+	if conn.Status == StatusConnected && conn.DB != nil {
+		return conn, nil
+	}
+
+	newConn, err := r.createConnection(label, conn.ConnString)
+	if err != nil {
+		conn.Status = StatusError
+		conn.ErrorMsg = err.Error()
+		return nil, fmt.Errorf("failed to connect to database %s: %w", label, err)
+	}
+
+	conn.DB = newConn.DB
+	conn.schema = newConn.schema
+	conn.Status = newConn.Status
+	conn.ErrorMsg = ""
+	conn.cachePath = newConn.cachePath
+
+	return conn, nil
+}
+
+// Close closes all database connections
+func (r *DatabaseRegistry) Close() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	var lastErr error
+	for label, conn := range r.connections {
+		if conn.DB != nil {
+			if err := conn.DB.Close(); err != nil {
+				lastErr = err
+				fmt.Fprintf(os.Stderr, "Error closing connection %s: %v\n", label, err)
+			}
+		}
+	}
+	return lastErr
+}
+
+// IsMultiDatabase returns true if multiple named connections are configured
+func (r *DatabaseRegistry) IsMultiDatabase() bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.connections) > 1
 }
 
 // RequireConnection returns an error if the database is not connected.
-// Use this at the start of tool handlers that need a live connection.
-func (d *Database) RequireConnection() error {
-	if d.db == nil {
-		return fmt.Errorf("database not connected: ORACLE_CONNECTION_STRING environment variable is required")
+// The database parameter is required for multi-database connections.
+func (r *DatabaseRegistry) RequireConnection(database string) (QueryExecutor, error) {
+	// Default to _default for single-database mode
+	if database == "" {
+		database = "_default"
 	}
-	return nil
+
+	conn, err := r.GetConnection(database)
+	if err != nil {
+		return nil, err
+	}
+
+	if conn.Status != StatusConnected || conn.DB == nil {
+		return nil, fmt.Errorf("database %s is not connected (status: %s)", database, conn.Status)
+	}
+
+	return conn, nil
+}
+
+// --- Connection-level methods ---
+
+// IsConnected returns true if the connection is established
+func (c *Connection) IsConnected() bool {
+	return c.DB != nil
 }
 
 // InitializeSchemaCache loads or builds the schema cache
-func (d *Database) InitializeSchemaCache() error {
-	cache, err := d.loadOrBuildCache()
+func (c *Connection) InitializeSchemaCache() error {
+	cache, err := c.loadOrBuildCache()
 	if err != nil {
 		return err
 	}
 
-	d.cacheMutex.Lock()
-	d.cache = cache
-	d.cacheMutex.Unlock()
+	c.cacheMutex.Lock()
+	c.cache = cache
+	c.cacheMutex.Unlock()
 
 	return nil
 }
 
 // RebuildSchemaCache forces a rebuild of the schema cache
-func (d *Database) RebuildSchemaCache() error {
-	cache, err := d.buildCache()
+func (c *Connection) RebuildSchemaCache() error {
+	cache, err := c.buildCache()
 	if err != nil {
 		return err
 	}
 
-	d.cacheMutex.Lock()
-	d.cache = cache
-	d.cacheMutex.Unlock()
+	c.cacheMutex.Lock()
+	c.cache = cache
+	c.cacheMutex.Unlock()
 
-	return d.saveCache()
+	return c.saveCache()
 }
 
 // GetAllTableNames returns all table names
-func (d *Database) GetAllTableNames(ctx context.Context) ([]string, error) {
-	d.cacheMutex.RLock()
-	if d.cache != nil {
-		tables := make([]string, 0, len(d.cache.AllTableNames))
-		for table := range d.cache.AllTableNames {
+func (c *Connection) GetAllTableNames(ctx context.Context) ([]string, error) {
+	c.cacheMutex.RLock()
+	if c.cache != nil {
+		tables := make([]string, 0, len(c.cache.AllTableNames))
+		for table := range c.cache.AllTableNames {
 			tables = append(tables, table)
 		}
-		d.cacheMutex.RUnlock()
+		c.cacheMutex.RUnlock()
 		return tables, nil
 	}
-	d.cacheMutex.RUnlock()
+	c.cacheMutex.RUnlock()
 
 	// Fallback to database query
 	query := `
@@ -152,7 +363,7 @@ func (d *Database) GetAllTableNames(ctx context.Context) ([]string, error) {
 		ORDER BY table_name
 	`
 
-	rows, err := d.db.QueryContext(ctx, query, d.schema)
+	rows, err := c.DB.QueryContext(ctx, query, c.Schema())
 	if err != nil {
 		return nil, fmt.Errorf("failed to query tables: %w", err)
 	}
@@ -171,50 +382,50 @@ func (d *Database) GetAllTableNames(ctx context.Context) ([]string, error) {
 }
 
 // GetTableInfo returns schema information for a table
-func (t *Database) GetTableInfo(ctx context.Context, tableName string) (*TableInfo, error) {
+func (c *Connection) GetTableInfo(ctx context.Context, tableName string) (*TableInfo, error) {
 	tableName = strings.ToUpper(tableName)
 
 	// Check cache first
-	t.cacheMutex.RLock()
-	if t.cache != nil {
-		if tableInfo, ok := t.cache.Tables[tableName]; ok {
+	c.cacheMutex.RLock()
+	if c.cache != nil {
+		if tableInfo, ok := c.cache.Tables[tableName]; ok {
 			if tableInfo.FullyLoaded {
-				t.cacheMutex.RUnlock()
+				c.cacheMutex.RUnlock()
 				return tableInfo, nil
 			}
 		}
 	}
-	t.cacheMutex.RUnlock()
+	c.cacheMutex.RUnlock()
 
 	// Load from database
-	tableInfo, err := t.loadTableDetails(ctx, tableName)
+	tableInfo, err := c.loadTableDetails(ctx, tableName)
 	if err != nil {
 		return nil, err
 	}
 
 	// Update cache
 	if tableInfo != nil {
-		t.cacheMutex.Lock()
-		if t.cache != nil {
-			t.cache.Tables[tableName] = tableInfo
-			t.cache.AllTableNames[tableName] = struct{}{}
-			t.saveCache()
+		c.cacheMutex.Lock()
+		if c.cache != nil {
+			c.cache.Tables[tableName] = tableInfo
+			c.cache.AllTableNames[tableName] = struct{}{}
+			c.saveCache()
 		}
-		t.cacheMutex.Unlock()
+		c.cacheMutex.Unlock()
 	}
 
 	return tableInfo, nil
 }
 
 // SearchTables searches for tables by name pattern
-func (d *Database) SearchTables(ctx context.Context, searchTerm string, limit int) ([]string, error) {
+func (c *Connection) SearchTables(ctx context.Context, searchTerm string, limit int) ([]string, error) {
 	searchTerm = strings.ToUpper(searchTerm)
 
 	// First check cache
-	d.cacheMutex.RLock()
-	if d.cache != nil {
+	c.cacheMutex.RLock()
+	if c.cache != nil {
 		var matches []string
-		for tableName := range d.cache.AllTableNames {
+		for tableName := range c.cache.AllTableNames {
 			if strings.Contains(tableName, searchTerm) {
 				matches = append(matches, tableName)
 				if len(matches) >= limit {
@@ -222,13 +433,13 @@ func (d *Database) SearchTables(ctx context.Context, searchTerm string, limit in
 				}
 			}
 		}
-		d.cacheMutex.RUnlock()
+		c.cacheMutex.RUnlock()
 
 		if len(matches) >= limit {
 			return matches, nil
 		}
 	} else {
-		d.cacheMutex.RUnlock()
+		c.cacheMutex.RUnlock()
 	}
 
 	// Query database
@@ -241,7 +452,7 @@ func (d *Database) SearchTables(ctx context.Context, searchTerm string, limit in
 		FETCH FIRST :3 ROWS ONLY
 	`
 
-	rows, err := d.db.QueryContext(ctx, query, d.schema, searchTerm, limit)
+	rows, err := c.DB.QueryContext(ctx, query, c.Schema(), searchTerm, limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search tables: %w", err)
 	}
@@ -260,7 +471,7 @@ func (d *Database) SearchTables(ctx context.Context, searchTerm string, limit in
 }
 
 // SearchColumns searches for columns by name pattern
-func (d *Database) SearchColumns(ctx context.Context, searchTerm string, limit int) (map[string][]ColumnInfo, error) {
+func (c *Connection) SearchColumns(ctx context.Context, searchTerm string, limit int) (map[string][]ColumnInfo, error) {
 	searchTerm = strings.ToUpper(searchTerm)
 
 	query := `
@@ -272,7 +483,7 @@ func (d *Database) SearchColumns(ctx context.Context, searchTerm string, limit i
 		FETCH FIRST :3 ROWS ONLY
 	`
 
-	rows, err := d.db.QueryContext(ctx, query, d.schema, searchTerm, limit*10)
+	rows, err := c.DB.QueryContext(ctx, query, c.Schema(), searchTerm, limit*10)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search columns: %w", err)
 	}
@@ -305,7 +516,7 @@ func (d *Database) SearchColumns(ctx context.Context, searchTerm string, limit i
 }
 
 // GetConstraints returns constraints for a table
-func (d *Database) GetConstraints(ctx context.Context, tableName string) ([]ConstraintInfo, error) {
+func (c *Connection) GetConstraints(ctx context.Context, tableName string) ([]ConstraintInfo, error) {
 	tableName = strings.ToUpper(tableName)
 
 	query := `
@@ -315,7 +526,7 @@ func (d *Database) GetConstraints(ctx context.Context, tableName string) ([]Cons
 		AND ac.table_name = :2
 	`
 
-	rows, err := d.db.QueryContext(ctx, query, d.schema, tableName)
+	rows, err := c.DB.QueryContext(ctx, query, c.Schema(), tableName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get constraints: %w", err)
 	}
@@ -346,7 +557,7 @@ func (d *Database) GetConstraints(ctx context.Context, tableName string) ([]Cons
 			AND constraint_name = :2
 			ORDER BY position
 		`
-		colRows, err := d.db.QueryContext(ctx, colQuery, d.schema, name.String)
+		colRows, err := c.DB.QueryContext(ctx, colQuery, c.Schema(), name.String)
 		if err != nil {
 			return nil, err
 		}
@@ -377,7 +588,7 @@ func (d *Database) GetConstraints(ctx context.Context, tableName string) ([]Cons
 				AND acc.owner = ac.owner
 				ORDER BY acc.position
 			`
-			refRows, err := d.db.QueryContext(ctx, refQuery, d.schema, name.String)
+			refRows, err := c.DB.QueryContext(ctx, refQuery, c.Schema(), name.String)
 			if err != nil {
 				return nil, err
 			}
@@ -403,7 +614,7 @@ func (d *Database) GetConstraints(ctx context.Context, tableName string) ([]Cons
 }
 
 // GetIndexes returns indexes for a table
-func (d *Database) GetIndexes(ctx context.Context, tableName string) ([]IndexInfo, error) {
+func (c *Connection) GetIndexes(ctx context.Context, tableName string) ([]IndexInfo, error) {
 	tableName = strings.ToUpper(tableName)
 
 	query := `
@@ -413,7 +624,7 @@ func (d *Database) GetIndexes(ctx context.Context, tableName string) ([]IndexInf
 		AND table_name = :2
 	`
 
-	rows, err := d.db.QueryContext(ctx, query, d.schema, tableName)
+	rows, err := c.DB.QueryContext(ctx, query, c.Schema(), tableName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get indexes: %w", err)
 	}
@@ -441,7 +652,7 @@ func (d *Database) GetIndexes(ctx context.Context, tableName string) ([]IndexInf
 			AND index_name = :2
 			ORDER BY column_position
 		`
-		colRows, err := d.db.QueryContext(ctx, colQuery, d.schema, name)
+		colRows, err := c.DB.QueryContext(ctx, colQuery, c.Schema(), name)
 		if err != nil {
 			return nil, err
 		}
@@ -463,7 +674,7 @@ func (d *Database) GetIndexes(ctx context.Context, tableName string) ([]IndexInf
 }
 
 // GetRelatedTables returns tables related by foreign keys
-func (d *Database) GetRelatedTables(ctx context.Context, tableName string) (*RelatedTables, error) {
+func (c *Connection) GetRelatedTables(ctx context.Context, tableName string) (*RelatedTables, error) {
 	tableName = strings.ToUpper(tableName)
 
 	result := &RelatedTables{
@@ -484,7 +695,7 @@ func (d *Database) GetRelatedTables(ctx context.Context, tableName string) (*Rel
 		AND fk.owner = :2
 	`
 
-	rows, err := d.db.QueryContext(ctx, outQuery, tableName, d.schema)
+	rows, err := c.DB.QueryContext(ctx, outQuery, tableName, c.Schema())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get related tables: %w", err)
 	}
@@ -511,7 +722,7 @@ func (d *Database) GetRelatedTables(ctx context.Context, tableName string) (*Rel
 		AND fk.constraint_type = 'R'
 	`
 
-	rows, err = d.db.QueryContext(ctx, inQuery, tableName, d.schema)
+	rows, err = c.DB.QueryContext(ctx, inQuery, tableName, c.Schema())
 	if err != nil {
 		return nil, err
 	}
@@ -529,13 +740,13 @@ func (d *Database) GetRelatedTables(ctx context.Context, tableName string) (*Rel
 }
 
 // ExecuteQuery executes a SELECT query
-func (d *Database) ExecuteQuery(ctx context.Context, sql string, maxRows int) (*QueryResult, error) {
+func (c *Connection) ExecuteQuery(ctx context.Context, sql string, maxRows int) (*QueryResult, error) {
 	// Add row limiting if not present
 	if !strings.Contains(strings.ToUpper(sql), "FETCH FIRST") && !strings.Contains(strings.ToUpper(sql), "ROWNUM") {
 		sql = fmt.Sprintf("SELECT * FROM (%s) WHERE ROWNUM <= %d", sql, maxRows)
 	}
 
-	rows, err := d.db.QueryContext(ctx, sql)
+	rows, err := c.DB.QueryContext(ctx, sql)
 	if err != nil {
 		return nil, err
 	}
@@ -577,12 +788,12 @@ func (d *Database) ExecuteQuery(ctx context.Context, sql string, maxRows int) (*
 }
 
 // ExecuteWrite executes a DML query
-func (d *Database) ExecuteWrite(ctx context.Context, sql string, commit bool) (*WriteResult, error) {
-	if d.readOnly {
+func (c *Connection) ExecuteWrite(ctx context.Context, sql string, commit bool) (*WriteResult, error) {
+	if c.ReadOnly {
 		return nil, fmt.Errorf("database is in read-only mode")
 	}
 
-	tx, err := d.db.BeginTx(ctx, nil)
+	tx, err := c.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -608,8 +819,8 @@ func (d *Database) ExecuteWrite(ctx context.Context, sql string, commit bool) (*
 }
 
 // ExplainQuery gets the execution plan for a query
-func (d *Database) ExplainQuery(ctx context.Context, sql string) (*ExplainPlan, error) {
-	tx, err := d.db.BeginTx(ctx, nil)
+func (c *Connection) ExplainQuery(ctx context.Context, sql string) (*ExplainPlan, error) {
+	tx, err := c.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -667,30 +878,30 @@ func (d *Database) ExplainQuery(ctx context.Context, sql string) (*ExplainPlan, 
 	return plan, nil
 }
 
-// Helper functions
+// --- Private helper methods ---
 
-func (d *Database) loadOrBuildCache() (*SchemaCache, error) {
+func (c *Connection) loadOrBuildCache() (*SchemaCache, error) {
 	// Try to load from disk
-	if _, err := os.Stat(d.cachePath); err == nil {
-		cache, err := d.loadCacheFromDisk()
+	if _, err := os.Stat(c.cachePath); err == nil {
+		cache, err := c.loadCacheFromDisk()
 		if err == nil {
 			return cache, nil
 		}
 	}
 
 	// Build new cache
-	return d.buildCache()
+	return c.buildCache()
 }
 
-func (d *Database) loadCacheFromDisk() (*SchemaCache, error) {
+func (c *Connection) loadCacheFromDisk() (*SchemaCache, error) {
 	// Implementation would load from JSON file
 	// For now, return nil to trigger rebuild
 	return nil, fmt.Errorf("cache loading not implemented")
 }
 
-func (d *Database) buildCache() (*SchemaCache, error) {
+func (c *Connection) buildCache() (*SchemaCache, error) {
 	ctx := context.Background()
-	tables, err := d.GetAllTableNames(ctx)
+	tables, err := c.GetAllTableNames(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -711,23 +922,23 @@ func (d *Database) buildCache() (*SchemaCache, error) {
 		}
 	}
 
-	d.saveCache()
+	c.saveCache()
 	return cache, nil
 }
 
-func (d *Database) saveCache() error {
+func (c *Connection) saveCache() error {
 	// Implementation would save to JSON file
 	return nil
 }
 
-func (d *Database) loadTableDetails(ctx context.Context, tableName string) (*TableInfo, error) {
+func (c *Connection) loadTableDetails(ctx context.Context, tableName string) (*TableInfo, error) {
 	// Check if table exists
 	var count int
-	err := d.db.QueryRowContext(ctx, `
+	err := c.DB.QueryRowContext(ctx, `
 		SELECT COUNT(*) 
 		FROM all_tables 
 		WHERE owner = :1 AND table_name = :2
-	`, d.schema, tableName).Scan(&count)
+	`, c.Schema(), tableName).Scan(&count)
 
 	if err != nil {
 		return nil, err
@@ -738,12 +949,12 @@ func (d *Database) loadTableDetails(ctx context.Context, tableName string) (*Tab
 	}
 
 	// Get columns
-	colRows, err := d.db.QueryContext(ctx, `
+	colRows, err := c.DB.QueryContext(ctx, `
 		SELECT column_name, data_type, nullable
 		FROM all_tab_columns
 		WHERE owner = :1 AND table_name = :2
 		ORDER BY column_id
-	`, d.schema, tableName)
+	`, c.Schema(), tableName)
 
 	if err != nil {
 		return nil, err
@@ -768,7 +979,7 @@ func (d *Database) loadTableDetails(ctx context.Context, tableName string) (*Tab
 	}
 
 	// Get relationships
-	relRows, err := d.db.QueryContext(ctx, `
+	relRows, err := c.DB.QueryContext(ctx, `
 		SELECT 'OUTGOING' AS direction, acc.column_name, rcc.table_name, rcc.column_name
 		FROM all_constraints ac
 		JOIN all_cons_columns acc ON acc.constraint_name = ac.constraint_name AND acc.owner = ac.owner
@@ -792,7 +1003,7 @@ func (d *Database) loadTableDetails(ctx context.Context, tableName string) (*Tab
 			AND table_name = :2
 			AND constraint_type IN ('P', 'U')
 		)
-	`, d.schema, tableName)
+	`, c.Schema(), tableName)
 
 	if err != nil {
 		return nil, err
@@ -856,4 +1067,9 @@ func analyzeQueryForOptimization(sql string) []string {
 	}
 
 	return suggestions
+}
+
+// environ returns all environment variables as key=value pairs
+func environ() []string {
+	return os.Environ()
 }

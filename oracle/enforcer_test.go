@@ -132,30 +132,36 @@ func TestProfileAccuracy_ExecuteRead(t *testing.T) {
 
 // Test 2.1: Metadata Caching
 func TestMetadataCaching(t *testing.T) {
-	// Create mock with 5 tables
-	mockDB := newMockOracleDB()
-	mockDB.tables = []string{"USERS", "ORDERS", "PRODUCTS", "CATEGORIES", "INVENTORY"}
-	defer mockDB.Close()
-
-	server := createTestServer(mockDB, false)
-	// Note: We don't call server.Initialize() because it requires a real database connection.
-	// Instead, we verify that createTestServer properly sets up the mock cache.
-
-	// Verify cache is populated
-	db := server.db
-	db.cacheMutex.RLock()
-	cache := db.cache
-	db.cacheMutex.RUnlock()
-
-	if cache == nil {
-		t.Fatal("Cache should be initialized")
+	// Create a mock connection with pre-populated cache
+	mockConn := &Connection{
+		Label:    "test",
+		schema:   "TEST",
+		ReadOnly: false,
+		Status:   StatusConnected,
 	}
 
-	if len(cache.AllTableNames) != 5 {
-		t.Errorf("Expected 5 tables in cache, got %d", len(cache.AllTableNames))
+	// Pre-populate cache
+	mockConn.cache = &SchemaCache{
+		Tables:        make(map[string]*TableInfo),
+		AllTableNames: make(map[string]struct{}),
+	}
+
+	tables := []string{"USERS", "ORDERS", "PRODUCTS", "CATEGORIES", "INVENTORY"}
+	for _, table := range tables {
+		mockConn.cache.AllTableNames[table] = struct{}{}
+		mockConn.cache.Tables[table] = &TableInfo{
+			TableName:     table,
+			Columns:       []ColumnInfo{},
+			Relationships: make(map[string][]RelationshipInfo),
+			FullyLoaded:   true,
+		}
 	}
 
 	// Verify cache contains expected tables
+	if len(mockConn.cache.AllTableNames) != 5 {
+		t.Errorf("Expected 5 tables in cache, got %d", len(mockConn.cache.AllTableNames))
+	}
+
 	expectedTables := map[string]bool{
 		"USERS":      false,
 		"ORDERS":     false,
@@ -164,7 +170,7 @@ func TestMetadataCaching(t *testing.T) {
 		"INVENTORY":  false,
 	}
 
-	for table := range cache.AllTableNames {
+	for table := range mockConn.cache.AllTableNames {
 		if _, exists := expectedTables[table]; exists {
 			expectedTables[table] = true
 		}
@@ -178,50 +184,60 @@ func TestMetadataCaching(t *testing.T) {
 
 	// Verify GetAllTableNames returns tables from cache
 	ctx := context.Background()
-	tables, err := db.GetAllTableNames(ctx)
+	result, err := mockConn.GetAllTableNames(ctx)
 	if err != nil {
 		t.Fatalf("Failed to get tables: %v", err)
 	}
 
-	if len(tables) != 5 {
-		t.Errorf("Expected 5 tables from cache, got %d", len(tables))
+	if len(result) != 5 {
+		t.Errorf("Expected 5 tables from cache, got %d", len(result))
 	}
 }
 
 // Test 2.2: Relationship Discovery
 func TestRelationshipDiscovery(t *testing.T) {
-	mockDB := newMockOracleDB()
-	mockDB.tables = []string{"CUSTOMERS", "ORDERS"}
-	mockDB.relationships = map[string][]RelationshipInfo{
-		"CUSTOMERS": {
-			{
-				LocalColumn:   "CUSTOMER_ID",
-				ForeignColumn: "ID",
-				Direction:     "OUTGOING",
-			},
+	// Create a mock connection with relationships pre-populated
+	mockConn := &Connection{
+		Label:    "test",
+		schema:   "TEST",
+		ReadOnly: false,
+		Status:   StatusConnected,
+	}
+
+	// Pre-populate cache with relationships
+	mockConn.cache = &SchemaCache{
+		Tables: make(map[string]*TableInfo),
+		AllTableNames: map[string]struct{}{
+			"CUSTOMERS": {},
+			"ORDERS":    {},
 		},
 	}
-	defer mockDB.Close()
 
-	server := createTestServer(mockDB, false)
-	// Note: We don't call server.Initialize() because it would rebuild the cache
-	// and overwrite our mock data. The test verifies the mock data is set up correctly.
+	mockConn.cache.Tables["ORDERS"] = &TableInfo{
+		TableName: "ORDERS",
+		Relationships: map[string][]RelationshipInfo{
+			"CUSTOMERS": {
+				{
+					LocalColumn:   "CUSTOMER_ID",
+					ForeignColumn: "ID",
+					Direction:     "OUTGOING",
+				},
+			},
+		},
+		FullyLoaded: true,
+	}
 
-	// Access the cache directly to verify relationships are stored
-	server.db.cacheMutex.RLock()
-	tableInfo, ok := server.db.cache.Tables["ORDERS"]
-	server.db.cacheMutex.RUnlock()
-
+	// Verify relationships are stored
+	tableInfo, ok := mockConn.cache.Tables["ORDERS"]
 	if !ok {
 		t.Fatal("Expected table info for ORDERS in cache")
 	}
 
-	// Check relationships were set up in createTestServer
 	if len(tableInfo.Relationships) == 0 {
 		t.Fatal("Expected at least one relationship in table info")
 	}
 
-	// Find the relationship - look through all relationships for the one we expect
+	// Find the relationship
 	found := false
 	for _, rels := range tableInfo.Relationships {
 		for _, rel := range rels {
@@ -456,9 +472,88 @@ func TestDDLBlocked(t *testing.T) {
 }
 
 // ============================================================================
-// Mock Infrastructure
+// Mock Infrastructure (Simplified for multi-database architecture)
 // ============================================================================
 
+func createTestServerWithRegistry(tables []string, relationships map[string][]RelationshipInfo, readOnly bool) *Server {
+	config := &framework.Config{
+		Name:         "oracle-mcp-test",
+		Version:      "1.0.0",
+		Instructions: "Test Oracle MCP Server",
+	}
+
+	s := &Server{
+		Server:   framework.NewServerWithConfig(config),
+		readOnly: readOnly,
+	}
+
+	registry := &DatabaseRegistry{
+		connections: make(map[string]*Connection),
+		readOnly:    readOnly,
+	}
+
+	conn := &Connection{
+		Label:    "_default",
+		schema:   "TEST",
+		ReadOnly: readOnly,
+		Status:   StatusConnected,
+		cache: &SchemaCache{
+			Tables:        make(map[string]*TableInfo),
+			AllTableNames: make(map[string]struct{}),
+		},
+	}
+
+	for _, table := range tables {
+		conn.cache.AllTableNames[table] = struct{}{}
+		relationshipsForTable := relationships[table]
+		if relationshipsForTable == nil {
+			relationshipsForTable = []RelationshipInfo{}
+		}
+		conn.cache.Tables[table] = &TableInfo{
+			TableName:     table,
+			Columns:       []ColumnInfo{},
+			Relationships: make(map[string][]RelationshipInfo),
+			FullyLoaded:   true,
+		}
+		for _, rel := range relationshipsForTable {
+			conn.cache.Tables[table].Relationships[rel.Direction] = append(
+				conn.cache.Tables[table].Relationships[rel.Direction], rel)
+		}
+	}
+
+	registry.connections["_default"] = conn
+	s.db = registry
+	s.registerTools()
+
+	return s
+}
+
+// createTestServer creates a minimal test server for profile accuracy tests
+func createTestServer(mockDB *mockOracleDB, readOnly bool) *Server {
+	return createTestServerWithRegistry(mockDB.tables, mockDB.relationships, readOnly)
+}
+
+// Keep mockOracleDB for backwards compatibility
+func newMockOracleDB() *mockOracleDB {
+	return &mockOracleDB{
+		tables:        []string{},
+		relationships: make(map[string][]RelationshipInfo),
+	}
+}
+
+type mockOracleDB struct {
+	tables        []string
+	relationships map[string][]RelationshipInfo
+	writeExecuted bool
+	committed     bool
+	queryHistory  []string
+}
+
+func (m *mockOracleDB) Close() {
+	// Cleanup if needed
+}
+
+// Keep driver mocks for potential future use
 type mockOracleDriver struct {
 	conn *mockOracleConn
 }
@@ -589,76 +684,6 @@ func (r *mockRows) Next(dest []driver.Value) error {
 
 	r.pos++
 	return nil
-}
-
-// Helper functions
-func newMockOracleDB() *mockOracleDB {
-	return &mockOracleDB{
-		tables:        []string{},
-		relationships: make(map[string][]RelationshipInfo),
-	}
-}
-
-type mockOracleDB struct {
-	tables        []string
-	relationships map[string][]RelationshipInfo
-	writeExecuted bool
-	committed     bool
-	queryHistory  []string
-}
-
-func (m *mockOracleDB) Close() {
-	// Cleanup if needed
-}
-
-func createTestServer(mockDB *mockOracleDB, readOnly bool) *Server {
-	// For testing, we need to bypass the actual database connection
-	// and inject our mock. We'll create a minimal server structure.
-
-	config := &framework.Config{
-		Name:         "oracle-mcp-test",
-		Version:      "1.0.0",
-		Instructions: "Test Oracle MCP Server",
-	}
-
-	s := &Server{
-		Server:   framework.NewServerWithConfig(config),
-		readOnly: readOnly,
-	}
-
-	// Create a mock database that returns our test data
-	db := &Database{
-		connString: "mock://test",
-		schema:     "TEST",
-		readOnly:   readOnly,
-		cache: &SchemaCache{
-			Tables:        make(map[string]*TableInfo),
-			AllTableNames: make(map[string]struct{}),
-		},
-	}
-
-	// Populate cache with mock data - mark as fully loaded to avoid DB queries
-	for _, table := range mockDB.tables {
-		db.cache.AllTableNames[table] = struct{}{}
-
-		// For ORDERS table, add the relationship data
-		relationships := make(map[string][]RelationshipInfo)
-		if table == "ORDERS" {
-			relationships = mockDB.relationships
-		}
-
-		db.cache.Tables[table] = &TableInfo{
-			TableName:     table,
-			Columns:       []ColumnInfo{},
-			Relationships: relationships,
-			FullyLoaded:   true, // Mark as fully loaded to avoid DB query
-		}
-	}
-
-	s.db = db
-	s.registerTools()
-
-	return s
 }
 
 func stringSliceToInterfaceSlice(strs []string) []interface{} {

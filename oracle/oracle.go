@@ -7,28 +7,38 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/karldane/mcp-framework/framework"
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // Server provides the Oracle MCP server functionality
 type Server struct {
 	*framework.Server
-	db       *Database
+	db       *DatabaseRegistry
 	readOnly bool
 }
 
 // NewServer creates a new Oracle MCP server
-func NewServer(connString string, readOnly bool) (*Server, error) {
-	db, err := NewDatabase(connString, readOnly)
+func NewServer(readOnly bool) (*Server, error) {
+	db, err := NewDatabaseRegistry(readOnly)
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to Oracle: %w", err)
+		return nil, fmt.Errorf("failed to initialize database registry: %w", err)
+	}
+
+	multiDB := db.IsMultiDatabase()
+	instructions := "Oracle MCP Server with multi-database support. "
+	if multiDB {
+		instructions += "Multiple database connections are configured. "
+		instructions += "Use oracle_connections to see available databases. "
+		instructions += "All tools require a 'database' parameter."
+	} else {
+		instructions += "Use oracle_connections to check connection status."
 	}
 
 	config := &framework.Config{
 		Name:         "oracle-mcp",
-		Version:      "1.0.0",
-		Instructions: "Oracle MCP Server with schema introspection and query execution tools.",
+		Version:      "2.0.0",
+		Instructions: instructions,
 	}
 
 	s := &Server{
@@ -41,24 +51,40 @@ func NewServer(connString string, readOnly bool) (*Server, error) {
 	return s, nil
 }
 
-// Initialize initializes the schema cache
+// Initialize initializes the schema cache for connected databases
 func (s *Server) Initialize() error {
-	if !s.db.IsConnected() {
+	if s.db == nil {
 		return nil
 	}
-	if err := s.db.InitializeSchemaCache(); err != nil {
-		return fmt.Errorf("failed to initialize schema cache: %w", err)
+
+	// Initialize cache for all connected databases
+	connections := s.db.ListConnections()
+	for _, conn := range connections {
+		if conn.Connected {
+			c, err := s.db.GetConnection(conn.Label)
+			if err != nil {
+				continue
+			}
+			c.InitializeSchemaCache()
+		}
 	}
+
 	s.Server.Initialize()
 	return nil
 }
 
-// Close closes the database connection
+// Close closes the database connections
 func (s *Server) Close() error {
-	return s.db.Close()
+	if s.db != nil {
+		return s.db.Close()
+	}
+	return nil
 }
 
 func (s *Server) registerTools() {
+	// Meta-tool for listing connections
+	s.RegisterTool(&ListConnectionsTool{db: s.db})
+
 	// Read-only schema introspection tools
 	s.RegisterTool(&ListTablesTool{db: s.db})
 	s.RegisterTool(&DescribeTableTool{db: s.db})
@@ -83,12 +109,110 @@ func (s *Server) IsReadOnly() bool {
 
 // RebuildSchemaCache rebuilds the schema cache
 func (s *Server) RebuildSchemaCache() error {
-	return s.db.RebuildSchemaCache()
+	if s.db == nil {
+		return nil
+	}
+	connections := s.db.ListConnections()
+	for _, conn := range connections {
+		c, err := s.db.GetConnection(conn.Label)
+		if err != nil {
+			continue
+		}
+		c.RebuildSchemaCache()
+	}
+	return nil
 }
 
-// ListTablesTool lists all tables in the database
+// ListConnections returns all configured connections
+func (s *Server) ListConnections() []ConnectionInfo {
+	if s.db == nil {
+		return nil
+	}
+	return s.db.ListConnections()
+}
+
+// --- Meta-tool for listing connections ---
+
+// ListConnectionsTool lists all configured database connections
+type ListConnectionsTool struct {
+	db *DatabaseRegistry
+}
+
+func (t *ListConnectionsTool) Name() string {
+	return "oracle_connections"
+}
+
+func (t *ListConnectionsTool) Description() string {
+	if t.db.IsMultiDatabase() {
+		return "List all configured Oracle database connections with their status. " +
+			"All other tools require a 'database' parameter specifying which connection to use."
+	}
+	return "List Oracle database connection status and configured connections."
+}
+
+func (t *ListConnectionsTool) Schema() mcp.ToolInputSchema {
+	return mcp.ToolInputSchema{
+		Type:       "object",
+		Properties: map[string]interface{}{},
+	}
+}
+
+func (t *ListConnectionsTool) Handle(ctx context.Context, args map[string]interface{}) (string, error) {
+	connections := t.db.ListConnections()
+
+	if len(connections) == 0 {
+		return "No database connections configured.", nil
+	}
+
+	var result strings.Builder
+	if t.db.IsMultiDatabase() {
+		result.WriteString(fmt.Sprintf("Configured Database Connections (%d total):\n\n", len(connections)))
+	} else {
+		result.WriteString("Database Connection Status:\n\n")
+	}
+
+	result.WriteString("| Database | Schema | Status |\n")
+	result.WriteString("|----------|--------|--------|\n")
+
+	for _, conn := range connections {
+		status := "connected"
+		if conn.Status == "error" {
+			status = fmt.Sprintf("error: %s", conn.Schema)
+		} else if conn.Status == "disconnected" {
+			status = "disconnected"
+		} else if !conn.Connected {
+			status = "available"
+		}
+
+		displayLabel := conn.Label
+		if displayLabel == "_default" {
+			displayLabel = "(default)"
+		}
+
+		result.WriteString(fmt.Sprintf("| %s | %s | %s |\n", displayLabel, conn.Schema, status))
+	}
+
+	if t.db.IsMultiDatabase() {
+		result.WriteString("\nNote: All tools require a 'database' parameter. Use this tool to see available connection labels.")
+	}
+
+	return result.String(), nil
+}
+
+func (t *ListConnectionsTool) GetEnforcerProfile() framework.EnforcerProfile {
+	return framework.NewEnforcerProfile(
+		framework.WithRisk(framework.RiskLow),
+		framework.WithImpact(framework.ImpactRead),
+		framework.WithResourceCost(1),
+		framework.WithPII(false),
+	)
+}
+
+// --- Schema introspection tools ---
+
+// ListTablesTool lists all tables in a database
 type ListTablesTool struct {
-	db *Database
+	db *DatabaseRegistry
 }
 
 func (t *ListTablesTool) Name() string {
@@ -96,32 +220,46 @@ func (t *ListTablesTool) Name() string {
 }
 
 func (t *ListTablesTool) Description() string {
+	if t.db.IsMultiDatabase() {
+		return "List all tables in the specified Oracle database schema. " +
+			"Requires 'database' parameter."
+	}
 	return "List all tables in the Oracle database schema"
 }
 
 func (t *ListTablesTool) Schema() mcp.ToolInputSchema {
-	return mcp.ToolInputSchema{
-		Type: "object",
-		Properties: map[string]interface{}{
-			"limit": map[string]interface{}{
-				"type":        "number",
-				"description": "Maximum number of tables to return (default: 100)",
-				"default":     100,
-			},
+	props := map[string]interface{}{
+		"database": map[string]interface{}{
+			"type":        "string",
+			"description": "Database connection label (required). Use oracle_connections to see available databases.",
 		},
+		"limit": map[string]interface{}{
+			"type":        "number",
+			"description": "Maximum number of tables to return (default: 100)",
+			"default":     100,
+		},
+	}
+	if !t.db.IsMultiDatabase() {
+		delete(props, "database")
+	}
+	return mcp.ToolInputSchema{
+		Type:       "object",
+		Properties: props,
 	}
 }
 
 func (t *ListTablesTool) Handle(ctx context.Context, args map[string]interface{}) (string, error) {
-	if err := t.db.RequireConnection(); err != nil {
+	executor, err := t.db.RequireConnection(getDatabaseParam(args, t.db.IsMultiDatabase()))
+	if err != nil {
 		return "", err
 	}
+
 	limit := 100
 	if l, ok := args["limit"].(float64); ok {
 		limit = int(l)
 	}
 
-	tables, err := t.db.GetAllTableNames(ctx)
+	tables, err := executor.GetAllTableNames(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to list tables: %w", err)
 	}
@@ -131,7 +269,7 @@ func (t *ListTablesTool) Handle(ctx context.Context, args map[string]interface{}
 	}
 
 	var result strings.Builder
-	result.WriteString(fmt.Sprintf("Found %d tables:\n\n", len(tables)))
+	result.WriteString(fmt.Sprintf("Found %d tables in %s:\n\n", len(tables), executor.Schema()))
 	for _, table := range tables {
 		result.WriteString(fmt.Sprintf("- %s\n", table))
 	}
@@ -150,7 +288,7 @@ func (t *ListTablesTool) GetEnforcerProfile() framework.EnforcerProfile {
 
 // DescribeTableTool returns detailed schema information for a table
 type DescribeTableTool struct {
-	db *Database
+	db *DatabaseRegistry
 }
 
 func (t *DescribeTableTool) Name() string {
@@ -158,32 +296,46 @@ func (t *DescribeTableTool) Name() string {
 }
 
 func (t *DescribeTableTool) Description() string {
+	if t.db.IsMultiDatabase() {
+		return "Get detailed schema information for a specific table in the specified Oracle database " +
+			"(columns, relationships). Requires 'database' parameter."
+	}
 	return "Get detailed schema information for a specific table (columns, relationships)"
 }
 
 func (t *DescribeTableTool) Schema() mcp.ToolInputSchema {
-	return mcp.ToolInputSchema{
-		Type: "object",
-		Properties: map[string]interface{}{
-			"table_name": map[string]interface{}{
-				"type":        "string",
-				"description": "Name of the table to describe",
-			},
+	props := map[string]interface{}{
+		"database": map[string]interface{}{
+			"type":        "string",
+			"description": "Database connection label (required). Use oracle_connections to see available databases.",
 		},
-		Required: []string{"table_name"},
+		"table_name": map[string]interface{}{
+			"type":        "string",
+			"description": "Name of the table to describe",
+		},
+	}
+	if !t.db.IsMultiDatabase() {
+		delete(props, "database")
+	}
+	return mcp.ToolInputSchema{
+		Type:       "object",
+		Properties: props,
+		Required:   []string{"table_name"},
 	}
 }
 
 func (t *DescribeTableTool) Handle(ctx context.Context, args map[string]interface{}) (string, error) {
-	if err := t.db.RequireConnection(); err != nil {
+	executor, err := t.db.RequireConnection(getDatabaseParam(args, t.db.IsMultiDatabase()))
+	if err != nil {
 		return "", err
 	}
+
 	tableName, ok := args["table_name"].(string)
 	if !ok || tableName == "" {
 		return "", fmt.Errorf("table_name is required")
 	}
 
-	tableInfo, err := t.db.GetTableInfo(ctx, tableName)
+	tableInfo, err := executor.GetTableInfo(ctx, tableName)
 	if err != nil {
 		return "", err
 	}
@@ -206,7 +358,7 @@ func (t *DescribeTableTool) GetEnforcerProfile() framework.EnforcerProfile {
 
 // SearchTablesTool searches for tables by name pattern
 type SearchTablesTool struct {
-	db *Database
+	db *DatabaseRegistry
 }
 
 func (t *SearchTablesTool) Name() string {
@@ -214,31 +366,45 @@ func (t *SearchTablesTool) Name() string {
 }
 
 func (t *SearchTablesTool) Description() string {
+	if t.db.IsMultiDatabase() {
+		return "Search for tables by name pattern (case-insensitive substring match) " +
+			"in the specified Oracle database. Requires 'database' parameter."
+	}
 	return "Search for tables by name pattern (case-insensitive substring match)"
 }
 
 func (t *SearchTablesTool) Schema() mcp.ToolInputSchema {
-	return mcp.ToolInputSchema{
-		Type: "object",
-		Properties: map[string]interface{}{
-			"search_term": map[string]interface{}{
-				"type":        "string",
-				"description": "Search term to match against table names",
-			},
-			"limit": map[string]interface{}{
-				"type":        "number",
-				"description": "Maximum number of results (default: 20)",
-				"default":     20,
-			},
+	props := map[string]interface{}{
+		"database": map[string]interface{}{
+			"type":        "string",
+			"description": "Database connection label (required). Use oracle_connections to see available databases.",
 		},
-		Required: []string{"search_term"},
+		"search_term": map[string]interface{}{
+			"type":        "string",
+			"description": "Search term to match against table names",
+		},
+		"limit": map[string]interface{}{
+			"type":        "number",
+			"description": "Maximum number of results (default: 20)",
+			"default":     20,
+		},
+	}
+	if !t.db.IsMultiDatabase() {
+		delete(props, "database")
+	}
+	return mcp.ToolInputSchema{
+		Type:       "object",
+		Properties: props,
+		Required:   []string{"search_term"},
 	}
 }
 
 func (t *SearchTablesTool) Handle(ctx context.Context, args map[string]interface{}) (string, error) {
-	if err := t.db.RequireConnection(); err != nil {
+	executor, err := t.db.RequireConnection(getDatabaseParam(args, t.db.IsMultiDatabase()))
+	if err != nil {
 		return "", err
 	}
+
 	searchTerm, ok := args["search_term"].(string)
 	if !ok || searchTerm == "" {
 		return "", fmt.Errorf("search_term is required")
@@ -249,7 +415,7 @@ func (t *SearchTablesTool) Handle(ctx context.Context, args map[string]interface
 		limit = int(l)
 	}
 
-	tables, err := t.db.SearchTables(ctx, searchTerm, limit)
+	tables, err := executor.SearchTables(ctx, searchTerm, limit)
 	if err != nil {
 		return "", fmt.Errorf("failed to search tables: %w", err)
 	}
@@ -259,7 +425,7 @@ func (t *SearchTablesTool) Handle(ctx context.Context, args map[string]interface
 	}
 
 	var result strings.Builder
-	result.WriteString(fmt.Sprintf("Found %d tables matching '%s':\n\n", len(tables), searchTerm))
+	result.WriteString(fmt.Sprintf("Found %d tables matching '%s' in %s:\n\n", len(tables), searchTerm, executor.Schema()))
 	for _, table := range tables {
 		result.WriteString(fmt.Sprintf("- %s\n", table))
 	}
@@ -278,7 +444,7 @@ func (t *SearchTablesTool) GetEnforcerProfile() framework.EnforcerProfile {
 
 // SearchColumnsTool searches for columns across all tables
 type SearchColumnsTool struct {
-	db *Database
+	db *DatabaseRegistry
 }
 
 func (t *SearchColumnsTool) Name() string {
@@ -286,31 +452,45 @@ func (t *SearchColumnsTool) Name() string {
 }
 
 func (t *SearchColumnsTool) Description() string {
+	if t.db.IsMultiDatabase() {
+		return "Search for columns by name pattern across all tables " +
+			"in the specified Oracle database. Requires 'database' parameter."
+	}
 	return "Search for columns by name pattern across all tables"
 }
 
 func (t *SearchColumnsTool) Schema() mcp.ToolInputSchema {
-	return mcp.ToolInputSchema{
-		Type: "object",
-		Properties: map[string]interface{}{
-			"search_term": map[string]interface{}{
-				"type":        "string",
-				"description": "Search term to match against column names",
-			},
-			"limit": map[string]interface{}{
-				"type":        "number",
-				"description": "Maximum number of tables to return (default: 50)",
-				"default":     50,
-			},
+	props := map[string]interface{}{
+		"database": map[string]interface{}{
+			"type":        "string",
+			"description": "Database connection label (required). Use oracle_connections to see available databases.",
 		},
-		Required: []string{"search_term"},
+		"search_term": map[string]interface{}{
+			"type":        "string",
+			"description": "Search term to match against column names",
+		},
+		"limit": map[string]interface{}{
+			"type":        "number",
+			"description": "Maximum number of tables to return (default: 50)",
+			"default":     50,
+		},
+	}
+	if !t.db.IsMultiDatabase() {
+		delete(props, "database")
+	}
+	return mcp.ToolInputSchema{
+		Type:       "object",
+		Properties: props,
+		Required:   []string{"search_term"},
 	}
 }
 
 func (t *SearchColumnsTool) Handle(ctx context.Context, args map[string]interface{}) (string, error) {
-	if err := t.db.RequireConnection(); err != nil {
+	executor, err := t.db.RequireConnection(getDatabaseParam(args, t.db.IsMultiDatabase()))
+	if err != nil {
 		return "", err
 	}
+
 	searchTerm, ok := args["search_term"].(string)
 	if !ok || searchTerm == "" {
 		return "", fmt.Errorf("search_term is required")
@@ -321,7 +501,7 @@ func (t *SearchColumnsTool) Handle(ctx context.Context, args map[string]interfac
 		limit = int(l)
 	}
 
-	columns, err := t.db.SearchColumns(ctx, searchTerm, limit)
+	columns, err := executor.SearchColumns(ctx, searchTerm, limit)
 	if err != nil {
 		return "", fmt.Errorf("failed to search columns: %w", err)
 	}
@@ -331,7 +511,7 @@ func (t *SearchColumnsTool) Handle(ctx context.Context, args map[string]interfac
 	}
 
 	var result strings.Builder
-	result.WriteString(fmt.Sprintf("Found columns matching '%s' in %d tables:\n\n", searchTerm, len(columns)))
+	result.WriteString(fmt.Sprintf("Found columns matching '%s' in %d tables in %s:\n\n", searchTerm, len(columns), executor.Schema()))
 
 	count := 0
 	for tableName, cols := range columns {
@@ -364,7 +544,7 @@ func (t *SearchColumnsTool) GetEnforcerProfile() framework.EnforcerProfile {
 
 // GetConstraintsTool returns constraints for a table
 type GetConstraintsTool struct {
-	db *Database
+	db *DatabaseRegistry
 }
 
 func (t *GetConstraintsTool) Name() string {
@@ -372,32 +552,46 @@ func (t *GetConstraintsTool) Name() string {
 }
 
 func (t *GetConstraintsTool) Description() string {
+	if t.db.IsMultiDatabase() {
+		return "Get all constraints (PK, FK, UNIQUE, CHECK) for a table " +
+			"in the specified Oracle database. Requires 'database' parameter."
+	}
 	return "Get all constraints (PK, FK, UNIQUE, CHECK) for a table"
 }
 
 func (t *GetConstraintsTool) Schema() mcp.ToolInputSchema {
-	return mcp.ToolInputSchema{
-		Type: "object",
-		Properties: map[string]interface{}{
-			"table_name": map[string]interface{}{
-				"type":        "string",
-				"description": "Name of the table",
-			},
+	props := map[string]interface{}{
+		"database": map[string]interface{}{
+			"type":        "string",
+			"description": "Database connection label (required). Use oracle_connections to see available databases.",
 		},
-		Required: []string{"table_name"},
+		"table_name": map[string]interface{}{
+			"type":        "string",
+			"description": "Name of the table",
+		},
+	}
+	if !t.db.IsMultiDatabase() {
+		delete(props, "database")
+	}
+	return mcp.ToolInputSchema{
+		Type:       "object",
+		Properties: props,
+		Required:   []string{"table_name"},
 	}
 }
 
 func (t *GetConstraintsTool) Handle(ctx context.Context, args map[string]interface{}) (string, error) {
-	if err := t.db.RequireConnection(); err != nil {
+	executor, err := t.db.RequireConnection(getDatabaseParam(args, t.db.IsMultiDatabase()))
+	if err != nil {
 		return "", err
 	}
+
 	tableName, ok := args["table_name"].(string)
 	if !ok || tableName == "" {
 		return "", fmt.Errorf("table_name is required")
 	}
 
-	constraints, err := t.db.GetConstraints(ctx, tableName)
+	constraints, err := executor.GetConstraints(ctx, tableName)
 	if err != nil {
 		return "", fmt.Errorf("failed to get constraints: %w", err)
 	}
@@ -407,7 +601,7 @@ func (t *GetConstraintsTool) Handle(ctx context.Context, args map[string]interfa
 	}
 
 	var result strings.Builder
-	result.WriteString(fmt.Sprintf("Constraints for table '%s':\n\n", tableName))
+	result.WriteString(fmt.Sprintf("Constraints for table '%s' in %s:\n\n", tableName, executor.Schema()))
 
 	for _, c := range constraints {
 		result.WriteString(fmt.Sprintf("%s Constraint: %s\n", c.Type, c.Name))
@@ -437,7 +631,7 @@ func (t *GetConstraintsTool) GetEnforcerProfile() framework.EnforcerProfile {
 
 // GetIndexesTool returns indexes for a table
 type GetIndexesTool struct {
-	db *Database
+	db *DatabaseRegistry
 }
 
 func (t *GetIndexesTool) Name() string {
@@ -445,32 +639,46 @@ func (t *GetIndexesTool) Name() string {
 }
 
 func (t *GetIndexesTool) Description() string {
+	if t.db.IsMultiDatabase() {
+		return "Get all indexes for a table " +
+			"in the specified Oracle database. Requires 'database' parameter."
+	}
 	return "Get all indexes for a table"
 }
 
 func (t *GetIndexesTool) Schema() mcp.ToolInputSchema {
-	return mcp.ToolInputSchema{
-		Type: "object",
-		Properties: map[string]interface{}{
-			"table_name": map[string]interface{}{
-				"type":        "string",
-				"description": "Name of the table",
-			},
+	props := map[string]interface{}{
+		"database": map[string]interface{}{
+			"type":        "string",
+			"description": "Database connection label (required). Use oracle_connections to see available databases.",
 		},
-		Required: []string{"table_name"},
+		"table_name": map[string]interface{}{
+			"type":        "string",
+			"description": "Name of the table",
+		},
+	}
+	if !t.db.IsMultiDatabase() {
+		delete(props, "database")
+	}
+	return mcp.ToolInputSchema{
+		Type:       "object",
+		Properties: props,
+		Required:   []string{"table_name"},
 	}
 }
 
 func (t *GetIndexesTool) Handle(ctx context.Context, args map[string]interface{}) (string, error) {
-	if err := t.db.RequireConnection(); err != nil {
+	executor, err := t.db.RequireConnection(getDatabaseParam(args, t.db.IsMultiDatabase()))
+	if err != nil {
 		return "", err
 	}
+
 	tableName, ok := args["table_name"].(string)
 	if !ok || tableName == "" {
 		return "", fmt.Errorf("table_name is required")
 	}
 
-	indexes, err := t.db.GetIndexes(ctx, tableName)
+	indexes, err := executor.GetIndexes(ctx, tableName)
 	if err != nil {
 		return "", fmt.Errorf("failed to get indexes: %w", err)
 	}
@@ -480,7 +688,7 @@ func (t *GetIndexesTool) Handle(ctx context.Context, args map[string]interface{}
 	}
 
 	var result strings.Builder
-	result.WriteString(fmt.Sprintf("Indexes for table '%s':\n\n", tableName))
+	result.WriteString(fmt.Sprintf("Indexes for table '%s' in %s:\n\n", tableName, executor.Schema()))
 
 	for _, idx := range indexes {
 		unique := ""
@@ -509,7 +717,7 @@ func (t *GetIndexesTool) GetEnforcerProfile() framework.EnforcerProfile {
 
 // GetRelatedTablesTool returns tables related by foreign keys
 type GetRelatedTablesTool struct {
-	db *Database
+	db *DatabaseRegistry
 }
 
 func (t *GetRelatedTablesTool) Name() string {
@@ -517,38 +725,52 @@ func (t *GetRelatedTablesTool) Name() string {
 }
 
 func (t *GetRelatedTablesTool) Description() string {
+	if t.db.IsMultiDatabase() {
+		return "Get tables related to the specified table through foreign keys " +
+			"in the specified Oracle database. Requires 'database' parameter."
+	}
 	return "Get tables related to the specified table through foreign keys"
 }
 
 func (t *GetRelatedTablesTool) Schema() mcp.ToolInputSchema {
-	return mcp.ToolInputSchema{
-		Type: "object",
-		Properties: map[string]interface{}{
-			"table_name": map[string]interface{}{
-				"type":        "string",
-				"description": "Name of the table",
-			},
+	props := map[string]interface{}{
+		"database": map[string]interface{}{
+			"type":        "string",
+			"description": "Database connection label (required). Use oracle_connections to see available databases.",
 		},
-		Required: []string{"table_name"},
+		"table_name": map[string]interface{}{
+			"type":        "string",
+			"description": "Name of the table",
+		},
+	}
+	if !t.db.IsMultiDatabase() {
+		delete(props, "database")
+	}
+	return mcp.ToolInputSchema{
+		Type:       "object",
+		Properties: props,
+		Required:   []string{"table_name"},
 	}
 }
 
 func (t *GetRelatedTablesTool) Handle(ctx context.Context, args map[string]interface{}) (string, error) {
-	if err := t.db.RequireConnection(); err != nil {
+	executor, err := t.db.RequireConnection(getDatabaseParam(args, t.db.IsMultiDatabase()))
+	if err != nil {
 		return "", err
 	}
+
 	tableName, ok := args["table_name"].(string)
 	if !ok || tableName == "" {
 		return "", fmt.Errorf("table_name is required")
 	}
 
-	related, err := t.db.GetRelatedTables(ctx, tableName)
+	related, err := executor.GetRelatedTables(ctx, tableName)
 	if err != nil {
 		return "", fmt.Errorf("failed to get related tables: %w", err)
 	}
 
 	var result strings.Builder
-	result.WriteString(fmt.Sprintf("Tables related to '%s':\n\n", tableName))
+	result.WriteString(fmt.Sprintf("Tables related to '%s' in %s:\n\n", tableName, executor.Schema()))
 
 	if len(related.ReferencedTables) > 0 {
 		result.WriteString("Tables referenced by this table (outgoing foreign keys):\n")
@@ -583,7 +805,7 @@ func (t *GetRelatedTablesTool) GetEnforcerProfile() framework.EnforcerProfile {
 
 // ExecuteReadTool executes SELECT queries
 type ExecuteReadTool struct {
-	db *Database
+	db *DatabaseRegistry
 }
 
 func (t *ExecuteReadTool) Name() string {
@@ -591,31 +813,45 @@ func (t *ExecuteReadTool) Name() string {
 }
 
 func (t *ExecuteReadTool) Description() string {
+	if t.db.IsMultiDatabase() {
+		return "Execute a read-only SELECT query on the specified Oracle database " +
+			"(limited to 100 rows by default). Requires 'database' parameter."
+	}
 	return "Execute a read-only SELECT query (limited to 100 rows by default)"
 }
 
 func (t *ExecuteReadTool) Schema() mcp.ToolInputSchema {
-	return mcp.ToolInputSchema{
-		Type: "object",
-		Properties: map[string]interface{}{
-			"sql": map[string]interface{}{
-				"type":        "string",
-				"description": "SELECT SQL query to execute",
-			},
-			"max_rows": map[string]interface{}{
-				"type":        "number",
-				"description": "Maximum rows to return (default: 100, max: 1000)",
-				"default":     100,
-			},
+	props := map[string]interface{}{
+		"database": map[string]interface{}{
+			"type":        "string",
+			"description": "Database connection label (required). Use oracle_connections to see available databases.",
 		},
-		Required: []string{"sql"},
+		"sql": map[string]interface{}{
+			"type":        "string",
+			"description": "SELECT SQL query to execute",
+		},
+		"max_rows": map[string]interface{}{
+			"type":        "number",
+			"description": "Maximum rows to return (default: 100, max: 1000)",
+			"default":     100,
+		},
+	}
+	if !t.db.IsMultiDatabase() {
+		delete(props, "database")
+	}
+	return mcp.ToolInputSchema{
+		Type:       "object",
+		Properties: props,
+		Required:   []string{"sql"},
 	}
 }
 
 func (t *ExecuteReadTool) Handle(ctx context.Context, args map[string]interface{}) (string, error) {
-	if err := t.db.RequireConnection(); err != nil {
+	executor, err := t.db.RequireConnection(getDatabaseParam(args, t.db.IsMultiDatabase()))
+	if err != nil {
 		return "", err
 	}
+
 	sql, ok := args["sql"].(string)
 	if !ok || sql == "" {
 		return "", fmt.Errorf("sql is required")
@@ -634,7 +870,7 @@ func (t *ExecuteReadTool) Handle(ctx context.Context, args map[string]interface{
 		return "", fmt.Errorf("only SELECT queries are allowed with oracle_execute_read. Use oracle_execute_write for DML statements.")
 	}
 
-	result, err := t.db.ExecuteQuery(ctx, sql, maxRows)
+	result, err := executor.ExecuteQuery(ctx, sql, maxRows)
 	if err != nil {
 		return "", fmt.Errorf("query execution failed: %w", err)
 	}
@@ -652,9 +888,9 @@ func (t *ExecuteReadTool) GetEnforcerProfile() framework.EnforcerProfile {
 	)
 }
 
-// ExecuteWriteTool executes DML queries (INSERT, UPDATE, DELETE)
+// ExecuteWriteTool executes DML queries
 type ExecuteWriteTool struct {
-	db     *Database
+	db     *DatabaseRegistry
 	server *Server
 }
 
@@ -663,31 +899,45 @@ func (t *ExecuteWriteTool) Name() string {
 }
 
 func (t *ExecuteWriteTool) Description() string {
+	if t.db.IsMultiDatabase() {
+		return "Execute a write query (INSERT, UPDATE, DELETE) on the specified Oracle database. " +
+			"Disabled without --write-enabled flag. Requires 'database' parameter."
+	}
 	return "Execute a write query (INSERT, UPDATE, DELETE). Disabled without --write-enabled flag."
 }
 
 func (t *ExecuteWriteTool) Schema() mcp.ToolInputSchema {
-	return mcp.ToolInputSchema{
-		Type: "object",
-		Properties: map[string]interface{}{
-			"sql": map[string]interface{}{
-				"type":        "string",
-				"description": "DML SQL query to execute (INSERT, UPDATE, DELETE)",
-			},
-			"commit": map[string]interface{}{
-				"type":        "boolean",
-				"description": "Whether to commit the transaction (default: false for safety)",
-				"default":     false,
-			},
+	props := map[string]interface{}{
+		"database": map[string]interface{}{
+			"type":        "string",
+			"description": "Database connection label (required). Use oracle_connections to see available databases.",
 		},
-		Required: []string{"sql"},
+		"sql": map[string]interface{}{
+			"type":        "string",
+			"description": "DML SQL query to execute (INSERT, UPDATE, DELETE)",
+		},
+		"commit": map[string]interface{}{
+			"type":        "boolean",
+			"description": "Whether to commit the transaction (default: false for safety)",
+			"default":     false,
+		},
+	}
+	if !t.db.IsMultiDatabase() {
+		delete(props, "database")
+	}
+	return mcp.ToolInputSchema{
+		Type:       "object",
+		Properties: props,
+		Required:   []string{"sql"},
 	}
 }
 
 func (t *ExecuteWriteTool) Handle(ctx context.Context, args map[string]interface{}) (string, error) {
-	if err := t.db.RequireConnection(); err != nil {
+	executor, err := t.db.RequireConnection(getDatabaseParam(args, t.db.IsMultiDatabase()))
+	if err != nil {
 		return "", err
 	}
+
 	sql, ok := args["sql"].(string)
 	if !ok || sql == "" {
 		return "", fmt.Errorf("sql is required")
@@ -708,7 +958,7 @@ func (t *ExecuteWriteTool) Handle(ctx context.Context, args map[string]interface
 		return "", fmt.Errorf("server is in read-only mode. Set ORACLE_READ_ONLY=false to enable write operations.")
 	}
 
-	result, err := t.db.ExecuteWrite(ctx, sql, commit)
+	result, err := executor.ExecuteWrite(ctx, sql, commit)
 	if err != nil {
 		return "", fmt.Errorf("query execution failed: %w", err)
 	}
@@ -728,7 +978,7 @@ func (t *ExecuteWriteTool) GetEnforcerProfile() framework.EnforcerProfile {
 
 // ExplainQueryTool explains a query execution plan
 type ExplainQueryTool struct {
-	db *Database
+	db *DatabaseRegistry
 }
 
 func (t *ExplainQueryTool) Name() string {
@@ -736,26 +986,40 @@ func (t *ExplainQueryTool) Name() string {
 }
 
 func (t *ExplainQueryTool) Description() string {
+	if t.db.IsMultiDatabase() {
+		return "Get the execution plan for a SELECT query " +
+			"on the specified Oracle database. Requires 'database' parameter."
+	}
 	return "Get the execution plan for a SELECT query"
 }
 
 func (t *ExplainQueryTool) Schema() mcp.ToolInputSchema {
-	return mcp.ToolInputSchema{
-		Type: "object",
-		Properties: map[string]interface{}{
-			"sql": map[string]interface{}{
-				"type":        "string",
-				"description": "SELECT SQL query to explain",
-			},
+	props := map[string]interface{}{
+		"database": map[string]interface{}{
+			"type":        "string",
+			"description": "Database connection label (required). Use oracle_connections to see available databases.",
 		},
-		Required: []string{"sql"},
+		"sql": map[string]interface{}{
+			"type":        "string",
+			"description": "SELECT SQL query to explain",
+		},
+	}
+	if !t.db.IsMultiDatabase() {
+		delete(props, "database")
+	}
+	return mcp.ToolInputSchema{
+		Type:       "object",
+		Properties: props,
+		Required:   []string{"sql"},
 	}
 }
 
 func (t *ExplainQueryTool) Handle(ctx context.Context, args map[string]interface{}) (string, error) {
-	if err := t.db.RequireConnection(); err != nil {
+	executor, err := t.db.RequireConnection(getDatabaseParam(args, t.db.IsMultiDatabase()))
+	if err != nil {
 		return "", err
 	}
+
 	sql, ok := args["sql"].(string)
 	if !ok || sql == "" {
 		return "", fmt.Errorf("sql is required")
@@ -765,7 +1029,7 @@ func (t *ExplainQueryTool) Handle(ctx context.Context, args map[string]interface
 		return "", fmt.Errorf("only SELECT queries can be explained")
 	}
 
-	plan, err := t.db.ExplainQuery(ctx, sql)
+	plan, err := executor.ExplainQuery(ctx, sql)
 	if err != nil {
 		return "", fmt.Errorf("failed to explain query: %w", err)
 	}
@@ -782,7 +1046,14 @@ func (t *ExplainQueryTool) GetEnforcerProfile() framework.EnforcerProfile {
 	)
 }
 
-// Helper functions
+// --- Helper functions ---
+
+func getDatabaseParam(args map[string]interface{}, multiDB bool) string {
+	if db, ok := args["database"].(string); ok {
+		return db
+	}
+	return ""
+}
 
 func isSelectQuery(sql string) bool {
 	sql = strings.TrimSpace(strings.ToUpper(sql))
