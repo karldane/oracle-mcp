@@ -199,7 +199,7 @@ func (t *ListConnectionsTool) Handle(ctx context.Context, args map[string]interf
 	return result.String(), nil
 }
 
-func (t *ListConnectionsTool) GetEnforcerProfile() framework.EnforcerProfile {
+func (t *ListConnectionsTool) GetEnforcerProfile() *framework.EnforcerProfile {
 	return framework.NewEnforcerProfile(
 		framework.WithRisk(framework.RiskLow),
 		framework.WithImpact(framework.ImpactRead),
@@ -277,7 +277,7 @@ func (t *ListTablesTool) Handle(ctx context.Context, args map[string]interface{}
 	return result.String(), nil
 }
 
-func (t *ListTablesTool) GetEnforcerProfile() framework.EnforcerProfile {
+func (t *ListTablesTool) GetEnforcerProfile() *framework.EnforcerProfile {
 	return framework.NewEnforcerProfile(
 		framework.WithRisk(framework.RiskLow),
 		framework.WithImpact(framework.ImpactRead),
@@ -347,7 +347,7 @@ func (t *DescribeTableTool) Handle(ctx context.Context, args map[string]interfac
 	return tableInfo.FormatSchema(), nil
 }
 
-func (t *DescribeTableTool) GetEnforcerProfile() framework.EnforcerProfile {
+func (t *DescribeTableTool) GetEnforcerProfile() *framework.EnforcerProfile {
 	return framework.NewEnforcerProfile(
 		framework.WithRisk(framework.RiskLow),
 		framework.WithImpact(framework.ImpactRead),
@@ -433,7 +433,7 @@ func (t *SearchTablesTool) Handle(ctx context.Context, args map[string]interface
 	return result.String(), nil
 }
 
-func (t *SearchTablesTool) GetEnforcerProfile() framework.EnforcerProfile {
+func (t *SearchTablesTool) GetEnforcerProfile() *framework.EnforcerProfile {
 	return framework.NewEnforcerProfile(
 		framework.WithRisk(framework.RiskLow),
 		framework.WithImpact(framework.ImpactRead),
@@ -533,7 +533,7 @@ func (t *SearchColumnsTool) Handle(ctx context.Context, args map[string]interfac
 	return result.String(), nil
 }
 
-func (t *SearchColumnsTool) GetEnforcerProfile() framework.EnforcerProfile {
+func (t *SearchColumnsTool) GetEnforcerProfile() *framework.EnforcerProfile {
 	return framework.NewEnforcerProfile(
 		framework.WithRisk(framework.RiskLow),
 		framework.WithImpact(framework.ImpactRead),
@@ -620,7 +620,7 @@ func (t *GetConstraintsTool) Handle(ctx context.Context, args map[string]interfa
 	return result.String(), nil
 }
 
-func (t *GetConstraintsTool) GetEnforcerProfile() framework.EnforcerProfile {
+func (t *GetConstraintsTool) GetEnforcerProfile() *framework.EnforcerProfile {
 	return framework.NewEnforcerProfile(
 		framework.WithRisk(framework.RiskLow),
 		framework.WithImpact(framework.ImpactRead),
@@ -706,7 +706,7 @@ func (t *GetIndexesTool) Handle(ctx context.Context, args map[string]interface{}
 	return result.String(), nil
 }
 
-func (t *GetIndexesTool) GetEnforcerProfile() framework.EnforcerProfile {
+func (t *GetIndexesTool) GetEnforcerProfile() *framework.EnforcerProfile {
 	return framework.NewEnforcerProfile(
 		framework.WithRisk(framework.RiskLow),
 		framework.WithImpact(framework.ImpactRead),
@@ -794,7 +794,7 @@ func (t *GetRelatedTablesTool) Handle(ctx context.Context, args map[string]inter
 	return result.String(), nil
 }
 
-func (t *GetRelatedTablesTool) GetEnforcerProfile() framework.EnforcerProfile {
+func (t *GetRelatedTablesTool) GetEnforcerProfile() *framework.EnforcerProfile {
 	return framework.NewEnforcerProfile(
 		framework.WithRisk(framework.RiskLow),
 		framework.WithImpact(framework.ImpactRead),
@@ -878,7 +878,7 @@ func (t *ExecuteReadTool) Handle(ctx context.Context, args map[string]interface{
 	return formatQueryResult(result), nil
 }
 
-func (t *ExecuteReadTool) GetEnforcerProfile() framework.EnforcerProfile {
+func (t *ExecuteReadTool) GetEnforcerProfile() *framework.EnforcerProfile {
 	return framework.NewEnforcerProfile(
 		framework.WithRisk(framework.RiskMed),
 		framework.WithImpact(framework.ImpactRead),
@@ -966,7 +966,7 @@ func (t *ExecuteWriteTool) Handle(ctx context.Context, args map[string]interface
 	return formatWriteResult(result, commit), nil
 }
 
-func (t *ExecuteWriteTool) GetEnforcerProfile() framework.EnforcerProfile {
+func (t *ExecuteWriteTool) GetEnforcerProfile() *framework.EnforcerProfile {
 	return framework.NewEnforcerProfile(
 		framework.WithRisk(framework.RiskHigh),
 		framework.WithImpact(framework.ImpactWrite),
@@ -1037,7 +1037,7 @@ func (t *ExplainQueryTool) Handle(ctx context.Context, args map[string]interface
 	return formatExplainPlan(plan), nil
 }
 
-func (t *ExplainQueryTool) GetEnforcerProfile() framework.EnforcerProfile {
+func (t *ExplainQueryTool) GetEnforcerProfile() *framework.EnforcerProfile {
 	return framework.NewEnforcerProfile(
 		framework.WithRisk(framework.RiskLow),
 		framework.WithImpact(framework.ImpactRead),

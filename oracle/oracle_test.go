@@ -20,7 +20,7 @@ func TestToolDefinitions(t *testing.T) {
 		tool interface {
 			Name() string
 			Description() string
-			GetEnforcerProfile() framework.EnforcerProfile
+			GetEnforcerProfile() *framework.EnforcerProfile
 		}
 		expectedRisk     framework.RiskLevel
 		expectedImpact   framework.ImpactScope
