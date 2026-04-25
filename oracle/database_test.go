@@ -566,7 +566,7 @@ func TestToolDefinitions_MultiDatabase(t *testing.T) {
 		tool interface {
 			Name() string
 			Description() string
-			GetEnforcerProfile() *framework.EnforcerProfile
+			EnforcerProfile(args map[string]interface{}) *framework.EnforcerProfile
 		}
 		expectedRisk     framework.RiskLevel
 		expectedImpact   framework.ImpactScope
@@ -645,15 +645,15 @@ func TestToolDefinitions_MultiDatabase(t *testing.T) {
 		{
 			name:             "ExecuteWriteTool",
 			tool:             &ExecuteWriteTool{},
-			expectedRisk:     framework.RiskHigh,
-			expectedImpact:   framework.ImpactWrite,
-			expectedApproval: true,
+			expectedRisk:     framework.RiskMed,
+			expectedImpact:   framework.ImpactRead,
+			expectedApproval: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			profile := tt.tool.GetEnforcerProfile()
+			profile := tt.tool.EnforcerProfile(nil)
 
 			if profile.RiskLevel != tt.expectedRisk {
 				t.Errorf("Expected risk %s, got %s", tt.expectedRisk, profile.RiskLevel)
@@ -1131,12 +1131,12 @@ func TestListConnectionsTool_Handle(t *testing.T) {
 
 	tool := &ListConnectionsTool{db: registry}
 
-	result, err := tool.Handle(nil, map[string]interface{}{})
+	result, err := tool.Handle(framework.Background(), map[string]interface{}{})
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
 
-	if !strings.Contains(result, "No database connections") {
+	if !strings.Contains(result.RawText, "No database connections") {
 		t.Error("Expected 'No database connections' message")
 	}
 }
@@ -1155,12 +1155,12 @@ func TestListConnectionsTool_Handle_WithConnections(t *testing.T) {
 
 	tool := &ListConnectionsTool{db: registry}
 
-	result, err := tool.Handle(nil, map[string]interface{}{})
+	result, err := tool.Handle(framework.Background(), map[string]interface{}{})
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
 
-	if !strings.Contains(result, "Database Connection Status") {
+	if !strings.Contains(result.RawText, "Database Connection Status") {
 		t.Error("Expected status message")
 	}
 }
@@ -1185,20 +1185,20 @@ func TestListConnectionsTool_Handle_MultiDB(t *testing.T) {
 
 	tool := &ListConnectionsTool{db: registry}
 
-	result, err := tool.Handle(nil, map[string]interface{}{})
+	result, err := tool.Handle(framework.Background(), map[string]interface{}{})
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
 
-	if !strings.Contains(result, "Configured Database Connections") {
+	if !strings.Contains(result.RawText, "Configured Database Connections") {
 		t.Error("Expected multi-database message")
 	}
 
-	if !strings.Contains(result, "db1") {
+	if !strings.Contains(result.RawText, "db1") {
 		t.Error("Expected db1 in output")
 	}
 
-	if !strings.Contains(result, "db2") {
+	if !strings.Contains(result.RawText, "db2") {
 		t.Error("Expected db2 in output")
 	}
 }
@@ -1357,7 +1357,7 @@ func TestDescribeTableTool_Handle_MissingTableName(t *testing.T) {
 
 	tool := &DescribeTableTool{db: registry}
 
-	_, err := tool.Handle(nil, map[string]interface{}{})
+	_, err := tool.Handle(framework.Background(), map[string]interface{}{})
 	if err == nil {
 		t.Error("Expected error for missing table_name")
 	}
@@ -1376,7 +1376,7 @@ func TestSearchTablesTool_Handle_MissingSearchTerm(t *testing.T) {
 
 	tool := &SearchTablesTool{db: registry}
 
-	_, err := tool.Handle(nil, map[string]interface{}{})
+	_, err := tool.Handle(framework.Background(), map[string]interface{}{})
 	if err == nil {
 		t.Error("Expected error for missing search_term")
 	}
@@ -1395,7 +1395,7 @@ func TestSearchColumnsTool_Handle_MissingSearchTerm(t *testing.T) {
 
 	tool := &SearchColumnsTool{db: registry}
 
-	_, err := tool.Handle(nil, map[string]interface{}{})
+	_, err := tool.Handle(framework.Background(), map[string]interface{}{})
 	if err == nil {
 		t.Error("Expected error for missing search_term")
 	}
@@ -1414,7 +1414,7 @@ func TestGetConstraintsTool_Handle_MissingTableName(t *testing.T) {
 
 	tool := &GetConstraintsTool{db: registry}
 
-	_, err := tool.Handle(nil, map[string]interface{}{})
+	_, err := tool.Handle(framework.Background(), map[string]interface{}{})
 	if err == nil {
 		t.Error("Expected error for missing table_name")
 	}
@@ -1433,7 +1433,7 @@ func TestGetIndexesTool_Handle_MissingTableName(t *testing.T) {
 
 	tool := &GetIndexesTool{db: registry}
 
-	_, err := tool.Handle(nil, map[string]interface{}{})
+	_, err := tool.Handle(framework.Background(), map[string]interface{}{})
 	if err == nil {
 		t.Error("Expected error for missing table_name")
 	}
@@ -1452,7 +1452,7 @@ func TestGetRelatedTablesTool_Handle_MissingTableName(t *testing.T) {
 
 	tool := &GetRelatedTablesTool{db: registry}
 
-	_, err := tool.Handle(nil, map[string]interface{}{})
+	_, err := tool.Handle(framework.Background(), map[string]interface{}{})
 	if err == nil {
 		t.Error("Expected error for missing table_name")
 	}
@@ -1471,7 +1471,7 @@ func TestExecuteReadTool_Handle_MissingSQL(t *testing.T) {
 
 	tool := &ExecuteReadTool{db: registry}
 
-	_, err := tool.Handle(nil, map[string]interface{}{})
+	_, err := tool.Handle(framework.Background(), map[string]interface{}{})
 	if err == nil {
 		t.Error("Expected error for missing sql")
 	}
@@ -1490,7 +1490,7 @@ func TestExecuteReadTool_Handle_NonSelectQuery(t *testing.T) {
 
 	tool := &ExecuteReadTool{db: registry}
 
-	_, err := tool.Handle(nil, map[string]interface{}{
+	_, err := tool.Handle(framework.Background(), map[string]interface{}{
 		"database": "_default",
 		"sql":      "DELETE FROM users WHERE id = 1",
 	})
@@ -1516,7 +1516,7 @@ func TestExecuteWriteTool_Handle_MissingSQL(t *testing.T) {
 	server := &Server{readOnly: false}
 	tool := &ExecuteWriteTool{db: registry, server: server}
 
-	_, err := tool.Handle(nil, map[string]interface{}{})
+	_, err := tool.Handle(framework.Background(), map[string]interface{}{})
 	if err == nil {
 		t.Error("Expected error for missing sql")
 	}
@@ -1535,7 +1535,7 @@ func TestExecuteWriteTool_Handle_NonWriteQuery(t *testing.T) {
 	server := &Server{readOnly: false}
 	tool := &ExecuteWriteTool{db: registry, server: server}
 
-	_, err := tool.Handle(nil, map[string]interface{}{
+	_, err := tool.Handle(framework.Background(), map[string]interface{}{
 		"database": "_default",
 		"sql":      "SELECT * FROM users",
 	})
@@ -1560,7 +1560,7 @@ func TestExecuteWriteTool_Handle_ReadOnlyServer(t *testing.T) {
 	server := &Server{readOnly: true}
 	tool := &ExecuteWriteTool{db: registry, server: server}
 
-	_, err := tool.Handle(nil, map[string]interface{}{
+	_, err := tool.Handle(framework.Background(), map[string]interface{}{
 		"database": "_default",
 		"sql":      "INSERT INTO users VALUES (1)",
 	})
@@ -1585,7 +1585,7 @@ func TestExplainQueryTool_Handle_MissingSQL(t *testing.T) {
 
 	tool := &ExplainQueryTool{db: registry}
 
-	_, err := tool.Handle(nil, map[string]interface{}{})
+	_, err := tool.Handle(framework.Background(), map[string]interface{}{})
 	if err == nil {
 		t.Error("Expected error for missing sql")
 	}
@@ -1604,7 +1604,7 @@ func TestExplainQueryTool_Handle_NonSelectQuery(t *testing.T) {
 
 	tool := &ExplainQueryTool{db: registry}
 
-	_, err := tool.Handle(nil, map[string]interface{}{
+	_, err := tool.Handle(framework.Background(), map[string]interface{}{
 		"sql": "DELETE FROM users",
 	})
 	if err == nil {
@@ -1968,7 +1968,7 @@ func TestListTablesTool_Handle_WithLimit(t *testing.T) {
 	tool := &ListTablesTool{db: registry}
 
 	// Test that limit parameter is accepted (will fail due to no real DB)
-	_, err := tool.Handle(nil, map[string]interface{}{
+	_, err := tool.Handle(framework.Background(), map[string]interface{}{
 		"limit": float64(10),
 	})
 
@@ -2307,7 +2307,7 @@ func TestSearchTablesTool_Handle_EmptyResults(t *testing.T) {
 
 	tool := &SearchTablesTool{db: registry}
 
-	result, err := tool.Handle(nil, map[string]interface{}{
+	result, err := tool.Handle(framework.Background(), map[string]interface{}{
 		"database":    "_default",
 		"search_term": "nonexistent",
 		"limit":       float64(10),
@@ -2315,8 +2315,8 @@ func TestSearchTablesTool_Handle_EmptyResults(t *testing.T) {
 	// May fail due to no real DB, which is expected
 	if err != nil {
 		t.Logf("Expected error without real DB: %v", err)
-	} else if !strings.Contains(result, "No tables found") {
-		t.Errorf("Expected 'No tables found' message, got: %s", result)
+	} else if !strings.Contains(result.RawText, "No tables found") {
+		t.Errorf("Expected 'No tables found' message, got: %s", result.RawText)
 	}
 }
 
@@ -2337,14 +2337,14 @@ func TestSearchColumnsTool_Handle_EmptyResults(t *testing.T) {
 
 	tool := &SearchColumnsTool{db: registry}
 
-	result, err := tool.Handle(nil, map[string]interface{}{
+	result, err := tool.Handle(framework.Background(), map[string]interface{}{
 		"database":    "_default",
 		"search_term": "nonexistent_column",
 	})
 	if err == nil {
 		// May succeed with empty results
-		if !strings.Contains(result, "No columns found") {
-			t.Logf("Got result: %s", result)
+		if !strings.Contains(result.RawText, "No columns found") {
+			t.Logf("Got result: %s", result.RawText)
 		}
 	}
 }
@@ -2366,7 +2366,7 @@ func TestGetConstraintsTool_Handle_EmptyResults(t *testing.T) {
 
 	tool := &GetConstraintsTool{db: registry}
 
-	result, err := tool.Handle(nil, map[string]interface{}{
+	result, err := tool.Handle(framework.Background(), map[string]interface{}{
 		"database":   "_default",
 		"table_name": "NONEXISTENT_TABLE",
 	})
@@ -2391,7 +2391,7 @@ func TestGetIndexesTool_Handle_EmptyResults(t *testing.T) {
 
 	tool := &GetIndexesTool{db: registry}
 
-	result, err := tool.Handle(nil, map[string]interface{}{
+	result, err := tool.Handle(framework.Background(), map[string]interface{}{
 		"database":   "_default",
 		"table_name": "NONEXISTENT_TABLE",
 	})
@@ -2416,7 +2416,7 @@ func TestGetRelatedTablesTool_Handle_EmptyResults(t *testing.T) {
 
 	tool := &GetRelatedTablesTool{db: registry}
 
-	result, err := tool.Handle(nil, map[string]interface{}{
+	result, err := tool.Handle(framework.Background(), map[string]interface{}{
 		"database":   "_default",
 		"table_name": "NONEXISTENT_TABLE",
 	})
@@ -2513,7 +2513,7 @@ func TestSearchTablesTool_Handle_WithLimit(t *testing.T) {
 	tool := &SearchTablesTool{db: registry}
 
 	// Test with limit parameter
-	_, err := tool.Handle(nil, map[string]interface{}{
+	_, err := tool.Handle(framework.Background(), map[string]interface{}{
 		"database":    "_default",
 		"search_term": "test",
 		"limit":       float64(5),
@@ -2540,7 +2540,7 @@ func TestSearchColumnsTool_Handle_WithLimit(t *testing.T) {
 
 	tool := &SearchColumnsTool{db: registry}
 
-	_, err := tool.Handle(nil, map[string]interface{}{
+	_, err := tool.Handle(framework.Background(), map[string]interface{}{
 		"database":    "_default",
 		"search_term": "test",
 		"limit":       float64(25),
@@ -2567,7 +2567,7 @@ func TestListTablesTool_Handle_LimitParam(t *testing.T) {
 	tool := &ListTablesTool{db: registry}
 
 	// Test with limit parameter
-	_, err := tool.Handle(nil, map[string]interface{}{
+	_, err := tool.Handle(framework.Background(), map[string]interface{}{
 		"database": "_default",
 		"limit":    float64(50),
 	})
@@ -2593,7 +2593,7 @@ func TestExecuteReadTool_Handle_WithMaxRows(t *testing.T) {
 
 	tool := &ExecuteReadTool{db: registry}
 
-	_, err := tool.Handle(nil, map[string]interface{}{
+	_, err := tool.Handle(framework.Background(), map[string]interface{}{
 		"database": "_default",
 		"sql":      "SELECT * FROM users",
 		"max_rows": float64(500),
@@ -2619,7 +2619,7 @@ func TestExecuteWriteTool_Handle_WithCommit(t *testing.T) {
 	server := &Server{readOnly: false}
 	tool := &ExecuteWriteTool{db: registry, server: server}
 
-	_, err := tool.Handle(nil, map[string]interface{}{
+	_, err := tool.Handle(framework.Background(), map[string]interface{}{
 		"database": "_default",
 		"sql":      "INSERT INTO users VALUES (1)",
 		"commit":   true,
@@ -2645,7 +2645,7 @@ func TestExplainQueryTool_Handle_InsertQuery(t *testing.T) {
 
 	tool := &ExplainQueryTool{db: registry}
 
-	_, err := tool.Handle(nil, map[string]interface{}{
+	_, err := tool.Handle(framework.Background(), map[string]interface{}{
 		"database": "_default",
 		"sql":      "INSERT INTO users VALUES (1)",
 	})
@@ -2793,7 +2793,7 @@ func TestConnection_GetTableInfo_WithCache(t *testing.T) {
 		},
 	}
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	tableInfo, err := conn.GetTableInfo(ctx, "USERS")
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -2839,7 +2839,7 @@ func TestConnection_SearchTables_WithCache(t *testing.T) {
 		},
 	}
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	// Request limit of 2, which is what we have in cache
 	// So it should return early without hitting the DB
 	tables, err := conn.SearchTables(ctx, "TEST", 2)
@@ -2893,7 +2893,7 @@ func TestConnection_GetConstraints_WithFKReferences(t *testing.T) {
 	mock.ExpectQuery("SELECT ac.table_name, acc.column_name").
 		WillReturnRows(refRows)
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	constraints, err := conn.GetConstraints(ctx, "ORDERS")
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -2945,7 +2945,7 @@ func TestConnection_GetIndexes_NonUnique(t *testing.T) {
 		WithArgs("TESTUSER", "IDX_NAME").
 		WillReturnRows(colRows)
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	indexes, err := conn.GetIndexes(ctx, "USERS")
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -2997,7 +2997,7 @@ func TestConnection_GetRelatedTables_BothDirections(t *testing.T) {
 		WithArgs("USERS", "TESTUSER").
 		WillReturnRows(inRows)
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	related, err := conn.GetRelatedTables(ctx, "USERS")
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -3041,7 +3041,7 @@ func TestConnection_ExecuteQuery_LimitsRows(t *testing.T) {
 	mock.ExpectQuery("SELECT \\* FROM \\(").
 		WillReturnRows(rows)
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	result, err := conn.ExecuteQuery(ctx, "SELECT * FROM users", 5)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -3077,7 +3077,7 @@ func TestConnection_ExecuteWrite_WithRollback(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 10))
 	mock.ExpectRollback()
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	result, err := conn.ExecuteWrite(ctx, "DELETE FROM users WHERE status = 'inactive'", false)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -3171,7 +3171,7 @@ func TestConnection_GetConstraints_NullCondition(t *testing.T) {
 		WithArgs("TESTUSER", "PK_TEST").
 		WillReturnRows(colRows)
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	constraints, err := conn.GetConstraints(ctx, "TEST")
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -3212,7 +3212,7 @@ func TestConnection_ExecuteQuery_WithROWNUM(t *testing.T) {
 	mock.ExpectQuery("SELECT").
 		WillReturnRows(rows)
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	result, err := conn.ExecuteQuery(ctx, "SELECT * FROM users WHERE ROWNUM <= 50", 100)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -3252,7 +3252,7 @@ func TestConnection_GetAllTableNames_CaseSensitivity(t *testing.T) {
 		WithArgs("testuser"). // Should use the schema as-is
 		WillReturnRows(rows)
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	tables, err := conn.GetAllTableNames(ctx)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -3295,7 +3295,7 @@ func TestConnection_GetRelatedTables_NoRelated(t *testing.T) {
 		WithArgs("USERS", "TESTUSER").
 		WillReturnRows(inRows)
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	related, err := conn.GetRelatedTables(ctx, "USERS")
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -3343,7 +3343,7 @@ func TestConnection_ExplainQuery_WithSuggestions(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectCommit()
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	plan, err := conn.ExplainQuery(ctx, "SELECT * FROM users WHERE name LIKE '%test'")
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -3376,7 +3376,7 @@ func TestConnection_ExecuteWrite_BeginError(t *testing.T) {
 	// Simulate begin error
 	mock.ExpectBegin().WillReturnError(fmt.Errorf("connection lost"))
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	_, err = conn.ExecuteWrite(ctx, "INSERT INTO users VALUES (1)", true)
 	if err == nil {
 		t.Error("Expected error for failed begin")
@@ -3408,7 +3408,7 @@ func TestConnection_GetIndexes_EmptyResult(t *testing.T) {
 		WithArgs("TESTUSER", "EMPTY_TABLE").
 		WillReturnRows(indexRows)
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	indexes, err := conn.GetIndexes(ctx, "EMPTY_TABLE")
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -3449,7 +3449,7 @@ func TestConnection_SearchColumns_MultipleTables(t *testing.T) {
 		WithArgs("TESTUSER", "USER", sqlmock.AnyArg()).
 		WillReturnRows(rows)
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	result, err := conn.SearchColumns(ctx, "USER", 50)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -3494,7 +3494,7 @@ func TestConnection_GetConstraints_CHECKConstraint(t *testing.T) {
 		WithArgs("TESTUSER", "CK_STATUS").
 		WillReturnRows(colRows)
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	constraints, err := conn.GetConstraints(ctx, "TEST")
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -3562,7 +3562,7 @@ func TestConnection_ExecuteQuery_EmptyResult(t *testing.T) {
 	mock.ExpectQuery("SELECT \\* FROM \\(").
 		WillReturnRows(rows)
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	result, err := conn.ExecuteQuery(ctx, "SELECT * FROM users", 100)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -3601,7 +3601,7 @@ func TestConnection_ExecuteWrite_ExecError(t *testing.T) {
 		WillReturnError(fmt.Errorf("ORA-00001: unique constraint violated"))
 	mock.ExpectRollback()
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	_, err = conn.ExecuteWrite(ctx, "INSERT INTO users VALUES (1)", true)
 	if err == nil {
 		t.Error("Expected error for constraint violation")
@@ -3632,7 +3632,7 @@ func TestConnection_ExecuteWrite_CommitError(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit().WillReturnError(fmt.Errorf("connection lost during commit"))
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	_, err = conn.ExecuteWrite(ctx, "INSERT INTO users VALUES (1)", true)
 	if err == nil {
 		t.Error("Expected error for commit failure")
@@ -3673,7 +3673,7 @@ func TestConnection_GetConstraints_WithCondition(t *testing.T) {
 		WithArgs("TESTUSER", "CK_SALARY").
 		WillReturnRows(colRows)
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	constraints, err := conn.GetConstraints(ctx, "EMPLOYEES")
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -3723,7 +3723,7 @@ func TestConnection_GetIndexes_Composite(t *testing.T) {
 		WithArgs("TESTUSER", "IDX_COMPOSITE").
 		WillReturnRows(colRows)
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	indexes, err := conn.GetIndexes(ctx, "ORDER_ITEMS")
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -3769,7 +3769,7 @@ func TestConnection_SearchColumns_Limit(t *testing.T) {
 		WithArgs("TESTUSER", "COL", sqlmock.AnyArg()).
 		WillReturnRows(rows)
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	result, err := conn.SearchColumns(ctx, "COL", 50)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -3821,7 +3821,7 @@ func TestConnection_ExplainQuery_ComplexPlan(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectCommit()
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	plan, err := conn.ExplainQuery(ctx, "SELECT COUNT(*) FROM orders o, customers c WHERE o.customer_id = c.id")
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -3999,7 +3999,7 @@ func TestConnection_SearchTables_EmptyCache(t *testing.T) {
 		WithArgs("TESTUSER", "TEST", 10).
 		WillReturnRows(rows)
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	tables, err := conn.SearchTables(ctx, "TEST", 10)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -4040,7 +4040,7 @@ func TestConnection_GetAllTableNames_NilCache(t *testing.T) {
 		WithArgs("TESTUSER").
 		WillReturnRows(rows)
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	tables, err := conn.GetAllTableNames(ctx)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -4115,7 +4115,7 @@ func TestConnection_GetAllTableNames_WithMock(t *testing.T) {
 		WithArgs("TESTUSER").
 		WillReturnRows(rows)
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	tables, err := conn.GetAllTableNames(ctx)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -4158,7 +4158,7 @@ func TestConnection_SearchTables_WithMock(t *testing.T) {
 		WithArgs("TESTUSER", "TEST", 10).
 		WillReturnRows(rows)
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	tables, err := conn.SearchTables(ctx, "TEST", 10)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -4202,7 +4202,7 @@ func TestConnection_SearchColumns_WithMock(t *testing.T) {
 		WithArgs("TESTUSER", "USER", sqlmock.AnyArg()).
 		WillReturnRows(rows)
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	columnsResult, err := conn.SearchColumns(ctx, "USER", 50)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -4259,7 +4259,7 @@ func TestConnection_GetConstraints_WithMock(t *testing.T) {
 		WithArgs("TESTUSER", "UK_EMAIL").
 		WillReturnRows(colRowsUk)
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	constraints, err := conn.GetConstraints(ctx, "USERS")
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -4314,7 +4314,7 @@ func TestConnection_GetIndexes_WithMock(t *testing.T) {
 		WithArgs("TESTUSER", "IDX_NAME").
 		WillReturnRows(colRows2)
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	indexes, err := conn.GetIndexes(ctx, "USERS")
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -4362,7 +4362,7 @@ func TestConnection_GetRelatedTables_WithMock(t *testing.T) {
 		WithArgs("USERS", "TESTUSER").
 		WillReturnRows(inRows)
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	related, err := conn.GetRelatedTables(ctx, "USERS")
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -4410,7 +4410,7 @@ func TestConnection_ExecuteQuery_WithMock(t *testing.T) {
 	mock.ExpectQuery("SELECT \\* FROM \\(").
 		WillReturnRows(rows)
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	result, err := conn.ExecuteQuery(ctx, "SELECT * FROM users", 100)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -4456,7 +4456,7 @@ func TestConnection_ExecuteQuery_WithFetch(t *testing.T) {
 	mock.ExpectQuery("SELECT").
 		WillReturnRows(rows)
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	result, err := conn.ExecuteQuery(ctx, "SELECT * FROM users FETCH FIRST 10 ROWS ONLY", 100)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -4491,7 +4491,7 @@ func TestConnection_ExecuteWrite_WithMock(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	result, err := conn.ExecuteWrite(ctx, "INSERT INTO users (name) VALUES ('test')", true)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -4534,7 +4534,7 @@ func TestConnection_ExecuteWrite_WithoutCommit(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 5))
 	mock.ExpectRollback()
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	result, err := conn.ExecuteWrite(ctx, "UPDATE users SET name = 'test' WHERE id = 1", false)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -4568,7 +4568,7 @@ func TestConnection_ExecuteWrite_ReadOnlyMode(t *testing.T) {
 		ReadOnly: true, // Read-only mode
 	}
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	_, err = conn.ExecuteWrite(ctx, "INSERT INTO users VALUES (1)", true)
 	if err == nil {
 		t.Error("Expected error for read-only mode")
@@ -4614,7 +4614,7 @@ func TestConnection_ExplainQuery_WithMock(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectCommit()
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	plan, err := conn.ExplainQuery(ctx, "SELECT * FROM users")
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -4670,7 +4670,7 @@ func TestConnection_GetTableInfo_WithMock(t *testing.T) {
 	mock.ExpectQuery("SELECT 'OUTGOING'").
 		WillReturnRows(relRows)
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	tableInfo, err := conn.GetTableInfo(ctx, "USERS")
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -4710,7 +4710,7 @@ func TestConnection_GetTableInfo_NotFound(t *testing.T) {
 		WithArgs("TESTUSER", "NONEXISTENT").
 		WillReturnRows(countRows)
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	tableInfo, err := conn.GetTableInfo(ctx, "NONEXISTENT")
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -4745,7 +4745,7 @@ func TestConnection_GetTableInfo_CountError(t *testing.T) {
 		WithArgs("TESTUSER", "USERS").
 		WillReturnError(fmt.Errorf("database error"))
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	tableInfo, err := conn.GetTableInfo(ctx, "USERS")
 	if err == nil {
 		t.Error("Expected error on count query failure")
@@ -4786,7 +4786,7 @@ func TestConnection_GetTableInfo_ColumnsError(t *testing.T) {
 		WithArgs("TESTUSER", "USERS").
 		WillReturnError(fmt.Errorf("columns query error"))
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	tableInfo, err := conn.GetTableInfo(ctx, "USERS")
 	if err == nil {
 		t.Error("Expected error on columns query failure")
@@ -4869,7 +4869,7 @@ func TestConnection_GetAllTableNames_WithCache(t *testing.T) {
 		},
 	}
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	tables, err := conn.GetAllTableNames(ctx)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -4928,7 +4928,7 @@ func TestExecuteReadTool_WithMock(t *testing.T) {
 		t.Errorf("Expected name oracle_execute_read, got %s", tool.Name())
 	}
 
-	profile := tool.GetEnforcerProfile()
+	profile := tool.EnforcerProfile(nil)
 	if profile.RiskLevel != framework.RiskMed {
 		t.Errorf("Expected RiskMed, got %s", profile.RiskLevel)
 	}
@@ -4947,7 +4947,7 @@ func TestExecuteWriteTool_WithMock(t *testing.T) {
 		t.Errorf("Expected name oracle_execute_write, got %s", tool.Name())
 	}
 
-	profile := tool.GetEnforcerProfile()
+	profile := tool.EnforcerProfile(map[string]interface{}{"commit": true})
 	if profile.ImpactScope != framework.ImpactWrite {
 		t.Errorf("Expected ImpactWrite, got %s", profile.ImpactScope)
 	}
@@ -4984,7 +4984,7 @@ func TestConnection_GetConstraints_ColumnsQueryError(t *testing.T) {
 		WithArgs("TESTUSER", "PK_USERS").
 		WillReturnError(fmt.Errorf("columns query error"))
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	_, err = conn.GetConstraints(ctx, "USERS")
 	if err == nil {
 		t.Error("Expected error when columns query fails")
@@ -5024,7 +5024,7 @@ func TestConnection_GetConstraints_RefQueryError(t *testing.T) {
 		WithArgs("TESTUSER", "FK_ORDERS").
 		WillReturnError(fmt.Errorf("ref query error"))
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	_, err = conn.GetConstraints(ctx, "ORDERS")
 	if err == nil {
 		t.Error("Expected error when ref query fails")
@@ -5055,7 +5055,7 @@ func TestConnection_GetRelatedTables_OutQueryError(t *testing.T) {
 		WithArgs("USERS", "TESTUSER").
 		WillReturnError(fmt.Errorf("out query error"))
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	_, err = conn.GetRelatedTables(ctx, "USERS")
 	if err == nil {
 		t.Error("Expected error when out query fails")
@@ -5088,7 +5088,7 @@ func TestConnection_GetRelatedTables_InQueryError(t *testing.T) {
 		WithArgs("USERS", "TESTUSER").
 		WillReturnError(fmt.Errorf("in query error"))
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	_, err = conn.GetRelatedTables(ctx, "USERS")
 	if err == nil {
 		t.Error("Expected error when in query fails")
@@ -5119,7 +5119,7 @@ func TestConnection_GetAllTableNames_QueryError(t *testing.T) {
 		WithArgs("TESTUSER").
 		WillReturnError(fmt.Errorf("query error"))
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	_, err = conn.GetAllTableNames(ctx)
 	if err == nil {
 		t.Error("Expected error when query fails")
@@ -5163,7 +5163,7 @@ func TestConnection_loadTableDetails_RelationshipsQueryError(t *testing.T) {
 		WithArgs("TESTUSER", "USERS").
 		WillReturnError(fmt.Errorf("relationships query error"))
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	_, err = conn.GetTableInfo(ctx, "USERS")
 	if err == nil {
 		t.Error("Expected error when relationships query fails")
@@ -5194,7 +5194,7 @@ func TestConnection_SearchTables_QueryError(t *testing.T) {
 		WithArgs("TESTUSER", "USER", 20).
 		WillReturnError(fmt.Errorf("search query error"))
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	_, err = conn.SearchTables(ctx, "USER", 20)
 	if err == nil {
 		t.Error("Expected error when search query fails")
@@ -5232,7 +5232,7 @@ func TestConnection_GetIndexes_ColumnsQueryError(t *testing.T) {
 		WithArgs("TESTUSER", "PK_USERS").
 		WillReturnError(fmt.Errorf("columns query error"))
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	_, err = conn.GetIndexes(ctx, "USERS")
 	if err == nil {
 		t.Error("Expected error when columns query fails")
@@ -5260,7 +5260,7 @@ func TestConnection_SearchTables_WithCacheAlt(t *testing.T) {
 
 	// Should return from cache, no DB query needed
 	// Note: limit must be <= number of matches to return from cache early
-	ctx := context.Background()
+	ctx := framework.Background()
 	tables, err := conn.SearchTables(ctx, "USER", 2)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -5291,7 +5291,7 @@ func TestConnection_GetAllTableNames_WithCacheAlt(t *testing.T) {
 		},
 	}
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	tables, err := conn.GetAllTableNames(ctx)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -5354,7 +5354,7 @@ func TestConnection_GetIndexes_QueryError(t *testing.T) {
 		WithArgs("TESTUSER", "USERS").
 		WillReturnError(fmt.Errorf("indexes query error"))
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	_, err = conn.GetIndexes(ctx, "USERS")
 	if err == nil {
 		t.Error("Expected error when index query fails")
@@ -5385,7 +5385,7 @@ func TestConnection_SearchColumns_QueryError(t *testing.T) {
 		WithArgs("TESTUSER", "ID", 500).
 		WillReturnError(fmt.Errorf("search query error"))
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	_, err = conn.SearchColumns(ctx, "ID", 50)
 	if err == nil {
 		t.Error("Expected error when search query fails")
@@ -5414,7 +5414,7 @@ func TestConnection_ExplainQuery_TxError(t *testing.T) {
 	// Mock BeginTx to fail
 	mock.ExpectBegin().WillReturnError(fmt.Errorf("begin error"))
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	_, err = conn.ExplainQuery(ctx, "SELECT * FROM users")
 	if err == nil {
 		t.Error("Expected error when BeginTx fails")
@@ -5450,7 +5450,7 @@ func TestConnection_ExplainQuery_PlanQueryError(t *testing.T) {
 	// Expect rollback
 	mock.ExpectRollback()
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	_, err = conn.ExplainQuery(ctx, "SELECT * FROM users")
 	if err == nil {
 		t.Error("Expected error when plan query fails")
@@ -5482,7 +5482,7 @@ func TestConnection_ExecuteQuery_WithFetchFirst(t *testing.T) {
 	mock.ExpectQuery("SELECT").
 		WillReturnRows(rows)
 
-	ctx := context.Background()
+	ctx := framework.Background()
 	result, err := conn.ExecuteQuery(ctx, "SELECT * FROM users FETCH FIRST 10 ROWS ONLY", 100)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -5555,21 +5555,21 @@ func TestListTablesTool_Handle_WithMockDB(t *testing.T) {
 		WillReturnRows(tablesRows)
 
 	tool := &ListTablesTool{db: registry}
-	ctx := context.Background()
+	ctx := framework.Background()
 
 	result, err := tool.Handle(ctx, map[string]interface{}{})
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
 
-	if result == "" {
+	if result.RawText == "" {
 		t.Error("Expected non-empty result")
 	}
 
 	// Verify result contains expected tables
 	expectedTables := []string{"USERS", "ORDERS", "PRODUCTS"}
 	for _, table := range expectedTables {
-		if !strings.Contains(result, table) {
+		if !strings.Contains(result.RawText, table) {
 			t.Errorf("Expected result to contain table %s", table)
 		}
 	}
@@ -5606,7 +5606,7 @@ func TestListTablesTool_Handle_WithLimitMock(t *testing.T) {
 		WillReturnRows(tablesRows)
 
 	tool := &ListTablesTool{db: registry}
-	ctx := context.Background()
+	ctx := framework.Background()
 
 	// Request only 3 tables
 	result, err := tool.Handle(ctx, map[string]interface{}{
@@ -5617,7 +5617,7 @@ func TestListTablesTool_Handle_WithLimitMock(t *testing.T) {
 	}
 
 	// Should contain 3 tables (A, B, C)
-	if !strings.Contains(result, "Found 3 tables") {
+	if !strings.Contains(result.RawText, "Found 3 tables") {
 		t.Errorf("Expected result to show 3 tables, got: %s", result)
 	}
 }
@@ -5663,7 +5663,7 @@ func TestDescribeTableTool_Handle_WithMockDB(t *testing.T) {
 		WillReturnRows(relRows)
 
 	tool := &DescribeTableTool{db: registry}
-	ctx := context.Background()
+	ctx := framework.Background()
 
 	result, err := tool.Handle(ctx, map[string]interface{}{
 		"table_name": "USERS",
@@ -5672,12 +5672,12 @@ func TestDescribeTableTool_Handle_WithMockDB(t *testing.T) {
 		t.Errorf("Unexpected error: %v", err)
 	}
 
-	if result == "" {
+	if result.RawText == "" {
 		t.Error("Expected non-empty result")
 	}
 
 	// Verify result contains expected columns
-	if !strings.Contains(result, "ID") || !strings.Contains(result, "NAME") {
+	if !strings.Contains(result.RawText, "ID") || !strings.Contains(result.RawText, "NAME") {
 		t.Errorf("Expected result to contain column names, got: %s", result)
 	}
 }
@@ -5710,7 +5710,7 @@ func TestSearchTablesTool_Handle_WithMockDB(t *testing.T) {
 		WillReturnRows(tablesRows)
 
 	tool := &SearchTablesTool{db: registry}
-	ctx := context.Background()
+	ctx := framework.Background()
 
 	result, err := tool.Handle(ctx, map[string]interface{}{
 		"search_term": "USER",
@@ -5719,12 +5719,12 @@ func TestSearchTablesTool_Handle_WithMockDB(t *testing.T) {
 		t.Errorf("Unexpected error: %v", err)
 	}
 
-	if result == "" {
+	if result.RawText == "" {
 		t.Error("Expected non-empty result")
 	}
 
 	// Verify result contains expected tables
-	if !strings.Contains(result, "USER_ACCOUNTS") || !strings.Contains(result, "USER_PROFILES") {
+	if !strings.Contains(result.RawText, "USER_ACCOUNTS") || !strings.Contains(result.RawText, "USER_PROFILES") {
 		t.Errorf("Expected result to contain searched tables, got: %s", result)
 	}
 }
@@ -5762,7 +5762,7 @@ func TestGetConstraintsTool_Handle_WithMockDB(t *testing.T) {
 		WillReturnRows(colRows)
 
 	tool := &GetConstraintsTool{db: registry}
-	ctx := context.Background()
+	ctx := framework.Background()
 
 	result, err := tool.Handle(ctx, map[string]interface{}{
 		"table_name": "USERS",
@@ -5771,11 +5771,11 @@ func TestGetConstraintsTool_Handle_WithMockDB(t *testing.T) {
 		t.Errorf("Unexpected error: %v", err)
 	}
 
-	if result == "" {
+	if result.RawText == "" {
 		t.Error("Expected non-empty result")
 	}
 
-	if !strings.Contains(result, "PRIMARY KEY") {
+	if !strings.Contains(result.RawText, "PRIMARY KEY") {
 		t.Errorf("Expected result to contain PRIMARY KEY, got: %s", result)
 	}
 }
@@ -5813,7 +5813,7 @@ func TestGetIndexesTool_Handle_WithMockDB(t *testing.T) {
 		WillReturnRows(colRows)
 
 	tool := &GetIndexesTool{db: registry}
-	ctx := context.Background()
+	ctx := framework.Background()
 
 	result, err := tool.Handle(ctx, map[string]interface{}{
 		"table_name": "USERS",
@@ -5822,11 +5822,11 @@ func TestGetIndexesTool_Handle_WithMockDB(t *testing.T) {
 		t.Errorf("Unexpected error: %v", err)
 	}
 
-	if result == "" {
+	if result.RawText == "" {
 		t.Error("Expected non-empty result")
 	}
 
-	if !strings.Contains(result, "UNIQUE") {
+	if !strings.Contains(result.RawText, "UNIQUE") {
 		t.Errorf("Expected result to contain UNIQUE, got: %s", result)
 	}
 }
@@ -5863,7 +5863,7 @@ func TestGetRelatedTablesTool_Handle_WithMockDB(t *testing.T) {
 		WillReturnRows(inRows)
 
 	tool := &GetRelatedTablesTool{db: registry}
-	ctx := context.Background()
+	ctx := framework.Background()
 
 	result, err := tool.Handle(ctx, map[string]interface{}{
 		"table_name": "USERS",
@@ -5872,11 +5872,11 @@ func TestGetRelatedTablesTool_Handle_WithMockDB(t *testing.T) {
 		t.Errorf("Unexpected error: %v", err)
 	}
 
-	if result == "" {
+	if result.RawText == "" {
 		t.Error("Expected non-empty result")
 	}
 
-	if !strings.Contains(result, "DEPARTMENTS") || !strings.Contains(result, "ORDERS") {
+	if !strings.Contains(result.RawText, "DEPARTMENTS") || !strings.Contains(result.RawText, "ORDERS") {
 		t.Errorf("Expected result to contain related tables, got: %s", result)
 	}
 }
@@ -5909,7 +5909,7 @@ func TestExecuteReadTool_Handle_WithMockDB(t *testing.T) {
 		WillReturnRows(rows)
 
 	tool := &ExecuteReadTool{db: registry}
-	ctx := context.Background()
+	ctx := framework.Background()
 
 	result, err := tool.Handle(ctx, map[string]interface{}{
 		"sql": "SELECT * FROM users",
@@ -5918,12 +5918,28 @@ func TestExecuteReadTool_Handle_WithMockDB(t *testing.T) {
 		t.Errorf("Unexpected error: %v", err)
 	}
 
-	if result == "" {
-		t.Error("Expected non-empty result")
+	// Check Data field contains rows
+	resultRows, ok := result.Data.([]map[string]interface{})
+	if !ok || len(resultRows) == 0 {
+		t.Error("Expected non-empty data")
+		return
 	}
 
-	if !strings.Contains(result, "Alice") || !strings.Contains(result, "Bob") {
-		t.Errorf("Expected result to contain query results, got: %s", result)
+	// Verify row contents
+	foundAlice := false
+	foundBob := false
+	for _, row := range resultRows {
+		if name, ok := row["NAME"].(string); ok {
+			if name == "Alice" {
+				foundAlice = true
+			}
+			if name == "Bob" {
+				foundBob = true
+			}
+		}
+	}
+	if !foundAlice || !foundBob {
+		t.Errorf("Expected result to contain query results, got: %v", result.Data)
 	}
 }
 
@@ -5967,7 +5983,7 @@ func TestExplainQueryTool_Handle_WithMockDB(t *testing.T) {
 	mock.ExpectCommit()
 
 	tool := &ExplainQueryTool{db: registry}
-	ctx := context.Background()
+	ctx := framework.Background()
 
 	result, err := tool.Handle(ctx, map[string]interface{}{
 		"sql": "SELECT * FROM users",
@@ -5976,11 +5992,11 @@ func TestExplainQueryTool_Handle_WithMockDB(t *testing.T) {
 		t.Errorf("Unexpected error: %v", err)
 	}
 
-	if result == "" {
+	if result.RawText == "" {
 		t.Error("Expected non-empty result")
 	}
 
-	if !strings.Contains(result, "Execution Plan") {
+	if !strings.Contains(result.RawText, "Execution Plan") {
 		t.Errorf("Expected result to contain execution plan, got: %s", result)
 	}
 }

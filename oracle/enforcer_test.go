@@ -73,10 +73,10 @@ func TestHandshakeMetadataPresence(t *testing.T) {
 // Test 1.2: Profile Accuracy
 func TestProfileAccuracy_ExecuteWrite(t *testing.T) {
 	tool := &ExecuteWriteTool{}
-	profile := tool.EnforcerProfile(nil)
+	profile := tool.EnforcerProfile(map[string]interface{}{"commit": true})
 
 	if profile.RiskLevel != framework.RiskHigh {
-		t.Errorf("oracle_execute_write should have RiskHigh, got %s", profile.RiskLevel)
+		t.Errorf("oracle_execute_write with commit=true should have RiskHigh, got %s", profile.RiskLevel)
 	}
 
 	if profile.ImpactScope != framework.ImpactWrite {
@@ -84,7 +84,7 @@ func TestProfileAccuracy_ExecuteWrite(t *testing.T) {
 	}
 
 	if !profile.ApprovalReq {
-		t.Error("oracle_execute_write should require approval")
+		t.Error("oracle_execute_write with commit=true should require approval")
 	}
 }
 
@@ -382,11 +382,6 @@ func TestGlobalReadOnlyRestriction(t *testing.T) {
 
 	// Create server in read-only mode
 	server := createTestServer(mockDB, true)
-	server.SetWriteEnabled(true) // Even with write-enabled flag, read-only mode should block
-
-	if err := server.Initialize(); err != nil {
-		t.Fatalf("Failed to initialize: %v", err)
-	}
 
 	// Verify server is in read-only mode
 	if !server.IsReadOnly() {
@@ -395,7 +390,7 @@ func TestGlobalReadOnlyRestriction(t *testing.T) {
 
 	// Verify the write tool's profile reflects this is a write operation
 	tool := &ExecuteWriteTool{db: server.db, server: server}
-	profile := tool.EnforcerProfile(nil)
+	profile := tool.EnforcerProfile(map[string]interface{}{"commit": true})
 
 	if profile.ImpactScope != framework.ImpactWrite {
 		t.Errorf("Write tool should have ImpactWrite, got %s", profile.ImpactScope)
