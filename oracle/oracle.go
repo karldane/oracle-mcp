@@ -4,6 +4,7 @@ package oracle
 
 import (
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/karldane/mcp-framework/framework"
@@ -157,10 +158,13 @@ func (t *ListConnectionsTool) Schema() mcp.ToolInputSchema {
 }
 
 func (t *ListConnectionsTool) Handle(ctx framework.CallContext, args map[string]interface{}) (framework.ToolResult, error) {
+	log.Printf("[DEBUG] ListConnectionsTool args: %v", args)
 	connections := t.db.ListConnections()
 
 	if len(connections) == 0 {
-		return framework.TextResult("No database connections configured."), nil
+		result := "No database connections configured."
+		log.Printf("[DEBUG] ListConnectionsTool result: %s", result)
+		return framework.TextResult(result), nil
 	}
 
 	var result strings.Builder
