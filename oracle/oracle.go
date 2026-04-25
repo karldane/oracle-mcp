@@ -3,7 +3,6 @@
 package oracle
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
@@ -157,11 +156,11 @@ func (t *ListConnectionsTool) Schema() mcp.ToolInputSchema {
 	}
 }
 
-func (t *ListConnectionsTool) Handle(ctx context.Context, args map[string]interface{}) (string, error) {
+func (t *ListConnectionsTool) Handle(ctx framework.CallContext, args map[string]interface{}) (framework.ToolResult, error) {
 	connections := t.db.ListConnections()
 
 	if len(connections) == 0 {
-		return "No database connections configured.", nil
+		return framework.TextResult("No database connections configured."), nil
 	}
 
 	var result strings.Builder
@@ -196,10 +195,10 @@ func (t *ListConnectionsTool) Handle(ctx context.Context, args map[string]interf
 		result.WriteString("\nNote: All tools require a 'database' parameter. Use this tool to see available connection labels.")
 	}
 
-	return result.String(), nil
+	return framework.TextResult(result.String()), nil
 }
 
-func (t *ListConnectionsTool) GetEnforcerProfile() *framework.EnforcerProfile {
+func (t *ListConnectionsTool) EnforcerProfile(args map[string]interface{}) *framework.EnforcerProfile {
 	return framework.NewEnforcerProfile(
 		framework.WithRisk(framework.RiskLow),
 		framework.WithImpact(framework.ImpactRead),
@@ -248,10 +247,10 @@ func (t *ListTablesTool) Schema() mcp.ToolInputSchema {
 	}
 }
 
-func (t *ListTablesTool) Handle(ctx context.Context, args map[string]interface{}) (string, error) {
+func (t *ListTablesTool) Handle(ctx framework.CallContext, args map[string]interface{}) (framework.ToolResult, error) {
 	executor, err := t.db.RequireConnection(getDatabaseParam(args, t.db.IsMultiDatabase()))
 	if err != nil {
-		return "", err
+		return framework.TextResult(""), err
 	}
 
 	limit := 100
@@ -261,7 +260,7 @@ func (t *ListTablesTool) Handle(ctx context.Context, args map[string]interface{}
 
 	tables, err := executor.GetAllTableNames(ctx)
 	if err != nil {
-		return "", fmt.Errorf("failed to list tables: %w", err)
+		return framework.ToolResult{}, fmt.Errorf("failed to list tables: %w", err)
 	}
 
 	if len(tables) > limit {
@@ -274,10 +273,10 @@ func (t *ListTablesTool) Handle(ctx context.Context, args map[string]interface{}
 		result.WriteString(fmt.Sprintf("- %s\n", table))
 	}
 
-	return result.String(), nil
+	return framework.TextResult(result.String()), nil
 }
 
-func (t *ListTablesTool) GetEnforcerProfile() *framework.EnforcerProfile {
+func (t *ListTablesTool) EnforcerProfile(args map[string]interface{}) *framework.EnforcerProfile {
 	return framework.NewEnforcerProfile(
 		framework.WithRisk(framework.RiskLow),
 		framework.WithImpact(framework.ImpactRead),
@@ -324,30 +323,30 @@ func (t *DescribeTableTool) Schema() mcp.ToolInputSchema {
 	}
 }
 
-func (t *DescribeTableTool) Handle(ctx context.Context, args map[string]interface{}) (string, error) {
+func (t *DescribeTableTool) Handle(ctx framework.CallContext, args map[string]interface{}) (framework.ToolResult, error) {
 	executor, err := t.db.RequireConnection(getDatabaseParam(args, t.db.IsMultiDatabase()))
 	if err != nil {
-		return "", err
+		return framework.TextResult(""), err
 	}
 
 	tableName, ok := args["table_name"].(string)
 	if !ok || tableName == "" {
-		return "", fmt.Errorf("table_name is required")
+		return framework.TextResult(""), fmt.Errorf("table_name is required")
 	}
 
 	tableInfo, err := executor.GetTableInfo(ctx, tableName)
 	if err != nil {
-		return "", err
+		return framework.TextResult(""), err
 	}
 
 	if tableInfo == nil {
-		return fmt.Sprintf("Table '%s' not found in the schema.", tableName), nil
+		return framework.TextResult(fmt.Sprintf("Table '%s' not found in the schema.", tableName)), nil
 	}
 
-	return tableInfo.FormatSchema(), nil
+	return framework.TextResult(tableInfo.FormatSchema()), nil
 }
 
-func (t *DescribeTableTool) GetEnforcerProfile() *framework.EnforcerProfile {
+func (t *DescribeTableTool) EnforcerProfile(args map[string]interface{}) *framework.EnforcerProfile {
 	return framework.NewEnforcerProfile(
 		framework.WithRisk(framework.RiskLow),
 		framework.WithImpact(framework.ImpactRead),
@@ -399,15 +398,15 @@ func (t *SearchTablesTool) Schema() mcp.ToolInputSchema {
 	}
 }
 
-func (t *SearchTablesTool) Handle(ctx context.Context, args map[string]interface{}) (string, error) {
+func (t *SearchTablesTool) Handle(ctx framework.CallContext, args map[string]interface{}) (framework.ToolResult, error) {
 	executor, err := t.db.RequireConnection(getDatabaseParam(args, t.db.IsMultiDatabase()))
 	if err != nil {
-		return "", err
+		return framework.TextResult(""), err
 	}
 
 	searchTerm, ok := args["search_term"].(string)
 	if !ok || searchTerm == "" {
-		return "", fmt.Errorf("search_term is required")
+		return framework.TextResult(""), fmt.Errorf("search_term is required")
 	}
 
 	limit := 20
@@ -417,11 +416,11 @@ func (t *SearchTablesTool) Handle(ctx context.Context, args map[string]interface
 
 	tables, err := executor.SearchTables(ctx, searchTerm, limit)
 	if err != nil {
-		return "", fmt.Errorf("failed to search tables: %w", err)
+		return framework.ToolResult{}, fmt.Errorf("failed to search tables: %w", err)
 	}
 
 	if len(tables) == 0 {
-		return fmt.Sprintf("No tables found matching '%s'", searchTerm), nil
+		return framework.TextResult(fmt.Sprintf("No tables found matching '%s'", searchTerm)), nil
 	}
 
 	var result strings.Builder
@@ -430,10 +429,10 @@ func (t *SearchTablesTool) Handle(ctx context.Context, args map[string]interface
 		result.WriteString(fmt.Sprintf("- %s\n", table))
 	}
 
-	return result.String(), nil
+	return framework.TextResult(result.String()), nil
 }
 
-func (t *SearchTablesTool) GetEnforcerProfile() *framework.EnforcerProfile {
+func (t *SearchTablesTool) EnforcerProfile(args map[string]interface{}) *framework.EnforcerProfile {
 	return framework.NewEnforcerProfile(
 		framework.WithRisk(framework.RiskLow),
 		framework.WithImpact(framework.ImpactRead),
@@ -485,15 +484,15 @@ func (t *SearchColumnsTool) Schema() mcp.ToolInputSchema {
 	}
 }
 
-func (t *SearchColumnsTool) Handle(ctx context.Context, args map[string]interface{}) (string, error) {
+func (t *SearchColumnsTool) Handle(ctx framework.CallContext, args map[string]interface{}) (framework.ToolResult, error) {
 	executor, err := t.db.RequireConnection(getDatabaseParam(args, t.db.IsMultiDatabase()))
 	if err != nil {
-		return "", err
+		return framework.TextResult(""), err
 	}
 
 	searchTerm, ok := args["search_term"].(string)
 	if !ok || searchTerm == "" {
-		return "", fmt.Errorf("search_term is required")
+		return framework.TextResult(""), fmt.Errorf("search_term is required")
 	}
 
 	limit := 50
@@ -503,11 +502,11 @@ func (t *SearchColumnsTool) Handle(ctx context.Context, args map[string]interfac
 
 	columns, err := executor.SearchColumns(ctx, searchTerm, limit)
 	if err != nil {
-		return "", fmt.Errorf("failed to search columns: %w", err)
+		return framework.ToolResult{}, fmt.Errorf("failed to search columns: %w", err)
 	}
 
 	if len(columns) == 0 {
-		return fmt.Sprintf("No columns found matching '%s'", searchTerm), nil
+		return framework.TextResult(fmt.Sprintf("No columns found matching '%s'", searchTerm)), nil
 	}
 
 	var result strings.Builder
@@ -530,10 +529,10 @@ func (t *SearchColumnsTool) Handle(ctx context.Context, args map[string]interfac
 		count++
 	}
 
-	return result.String(), nil
+	return framework.TextResult(result.String()), nil
 }
 
-func (t *SearchColumnsTool) GetEnforcerProfile() *framework.EnforcerProfile {
+func (t *SearchColumnsTool) EnforcerProfile(args map[string]interface{}) *framework.EnforcerProfile {
 	return framework.NewEnforcerProfile(
 		framework.WithRisk(framework.RiskLow),
 		framework.WithImpact(framework.ImpactRead),
@@ -580,24 +579,24 @@ func (t *GetConstraintsTool) Schema() mcp.ToolInputSchema {
 	}
 }
 
-func (t *GetConstraintsTool) Handle(ctx context.Context, args map[string]interface{}) (string, error) {
+func (t *GetConstraintsTool) Handle(ctx framework.CallContext, args map[string]interface{}) (framework.ToolResult, error) {
 	executor, err := t.db.RequireConnection(getDatabaseParam(args, t.db.IsMultiDatabase()))
 	if err != nil {
-		return "", err
+		return framework.TextResult(""), err
 	}
 
 	tableName, ok := args["table_name"].(string)
 	if !ok || tableName == "" {
-		return "", fmt.Errorf("table_name is required")
+		return framework.TextResult(""), fmt.Errorf("table_name is required")
 	}
 
 	constraints, err := executor.GetConstraints(ctx, tableName)
 	if err != nil {
-		return "", fmt.Errorf("failed to get constraints: %w", err)
+		return framework.ToolResult{}, fmt.Errorf("failed to get constraints: %w", err)
 	}
 
 	if len(constraints) == 0 {
-		return fmt.Sprintf("No constraints found for table '%s'", tableName), nil
+		return framework.TextResult(fmt.Sprintf("No constraints found for table '%s'", tableName)), nil
 	}
 
 	var result strings.Builder
@@ -617,10 +616,10 @@ func (t *GetConstraintsTool) Handle(ctx context.Context, args map[string]interfa
 		result.WriteString("\n")
 	}
 
-	return result.String(), nil
+	return framework.TextResult(result.String()), nil
 }
 
-func (t *GetConstraintsTool) GetEnforcerProfile() *framework.EnforcerProfile {
+func (t *GetConstraintsTool) EnforcerProfile(args map[string]interface{}) *framework.EnforcerProfile {
 	return framework.NewEnforcerProfile(
 		framework.WithRisk(framework.RiskLow),
 		framework.WithImpact(framework.ImpactRead),
@@ -667,24 +666,24 @@ func (t *GetIndexesTool) Schema() mcp.ToolInputSchema {
 	}
 }
 
-func (t *GetIndexesTool) Handle(ctx context.Context, args map[string]interface{}) (string, error) {
+func (t *GetIndexesTool) Handle(ctx framework.CallContext, args map[string]interface{}) (framework.ToolResult, error) {
 	executor, err := t.db.RequireConnection(getDatabaseParam(args, t.db.IsMultiDatabase()))
 	if err != nil {
-		return "", err
+		return framework.TextResult(""), err
 	}
 
 	tableName, ok := args["table_name"].(string)
 	if !ok || tableName == "" {
-		return "", fmt.Errorf("table_name is required")
+		return framework.TextResult(""), fmt.Errorf("table_name is required")
 	}
 
 	indexes, err := executor.GetIndexes(ctx, tableName)
 	if err != nil {
-		return "", fmt.Errorf("failed to get indexes: %w", err)
+		return framework.ToolResult{}, fmt.Errorf("failed to get indexes: %w", err)
 	}
 
 	if len(indexes) == 0 {
-		return fmt.Sprintf("No indexes found for table '%s'", tableName), nil
+		return framework.TextResult(fmt.Sprintf("No indexes found for table '%s'", tableName)), nil
 	}
 
 	var result strings.Builder
@@ -703,10 +702,10 @@ func (t *GetIndexesTool) Handle(ctx context.Context, args map[string]interface{}
 		result.WriteString("\n")
 	}
 
-	return result.String(), nil
+	return framework.TextResult(result.String()), nil
 }
 
-func (t *GetIndexesTool) GetEnforcerProfile() *framework.EnforcerProfile {
+func (t *GetIndexesTool) EnforcerProfile(args map[string]interface{}) *framework.EnforcerProfile {
 	return framework.NewEnforcerProfile(
 		framework.WithRisk(framework.RiskLow),
 		framework.WithImpact(framework.ImpactRead),
@@ -753,20 +752,20 @@ func (t *GetRelatedTablesTool) Schema() mcp.ToolInputSchema {
 	}
 }
 
-func (t *GetRelatedTablesTool) Handle(ctx context.Context, args map[string]interface{}) (string, error) {
+func (t *GetRelatedTablesTool) Handle(ctx framework.CallContext, args map[string]interface{}) (framework.ToolResult, error) {
 	executor, err := t.db.RequireConnection(getDatabaseParam(args, t.db.IsMultiDatabase()))
 	if err != nil {
-		return "", err
+		return framework.TextResult(""), err
 	}
 
 	tableName, ok := args["table_name"].(string)
 	if !ok || tableName == "" {
-		return "", fmt.Errorf("table_name is required")
+		return framework.TextResult(""), fmt.Errorf("table_name is required")
 	}
 
 	related, err := executor.GetRelatedTables(ctx, tableName)
 	if err != nil {
-		return "", fmt.Errorf("failed to get related tables: %w", err)
+		return framework.TextResult(""), err
 	}
 
 	var result strings.Builder
@@ -791,10 +790,10 @@ func (t *GetRelatedTablesTool) Handle(ctx context.Context, args map[string]inter
 		result.WriteString("No related tables found.\n")
 	}
 
-	return result.String(), nil
+	return framework.TextResult(result.String()), nil
 }
 
-func (t *GetRelatedTablesTool) GetEnforcerProfile() *framework.EnforcerProfile {
+func (t *GetRelatedTablesTool) EnforcerProfile(args map[string]interface{}) *framework.EnforcerProfile {
 	return framework.NewEnforcerProfile(
 		framework.WithRisk(framework.RiskLow),
 		framework.WithImpact(framework.ImpactRead),
@@ -846,15 +845,15 @@ func (t *ExecuteReadTool) Schema() mcp.ToolInputSchema {
 	}
 }
 
-func (t *ExecuteReadTool) Handle(ctx context.Context, args map[string]interface{}) (string, error) {
+func (t *ExecuteReadTool) Handle(ctx framework.CallContext, args map[string]interface{}) (framework.ToolResult, error) {
 	executor, err := t.db.RequireConnection(getDatabaseParam(args, t.db.IsMultiDatabase()))
 	if err != nil {
-		return "", err
+		return framework.TextResult(""), err
 	}
 
 	sql, ok := args["sql"].(string)
 	if !ok || sql == "" {
-		return "", fmt.Errorf("sql is required")
+		return framework.TextResult(""), fmt.Errorf("sql is required")
 	}
 
 	maxRows := 100
@@ -867,18 +866,18 @@ func (t *ExecuteReadTool) Handle(ctx context.Context, args map[string]interface{
 
 	// Ensure it's a SELECT query
 	if !isSelectQuery(sql) {
-		return "", fmt.Errorf("only SELECT queries are allowed with oracle_execute_read. Use oracle_execute_write for DML statements.")
+		return framework.TextResult(""), fmt.Errorf("only SELECT queries are allowed with oracle_execute_read. Use oracle_execute_write for DML statements.")
 	}
 
 	result, err := executor.ExecuteQuery(ctx, sql, maxRows)
 	if err != nil {
-		return "", fmt.Errorf("query execution failed: %w", err)
+		return framework.TextResult(""), err
 	}
 
-	return formatQueryResult(result), nil
+	return framework.TextResult(formatQueryResult(result)), nil
 }
 
-func (t *ExecuteReadTool) GetEnforcerProfile() *framework.EnforcerProfile {
+func (t *ExecuteReadTool) EnforcerProfile(args map[string]interface{}) *framework.EnforcerProfile {
 	return framework.NewEnforcerProfile(
 		framework.WithRisk(framework.RiskMed),
 		framework.WithImpact(framework.ImpactRead),
@@ -932,15 +931,15 @@ func (t *ExecuteWriteTool) Schema() mcp.ToolInputSchema {
 	}
 }
 
-func (t *ExecuteWriteTool) Handle(ctx context.Context, args map[string]interface{}) (string, error) {
+func (t *ExecuteWriteTool) Handle(ctx framework.CallContext, args map[string]interface{}) (framework.ToolResult, error) {
 	executor, err := t.db.RequireConnection(getDatabaseParam(args, t.db.IsMultiDatabase()))
 	if err != nil {
-		return "", err
+		return framework.TextResult(""), err
 	}
 
 	sql, ok := args["sql"].(string)
 	if !ok || sql == "" {
-		return "", fmt.Errorf("sql is required")
+		return framework.TextResult(""), fmt.Errorf("sql is required")
 	}
 
 	commit := false
@@ -950,29 +949,43 @@ func (t *ExecuteWriteTool) Handle(ctx context.Context, args map[string]interface
 
 	// Check if it's a write operation
 	if !isWriteQuery(sql) {
-		return "", fmt.Errorf("only INSERT, UPDATE, DELETE queries are allowed with oracle_execute_write")
+		return framework.TextResult(""), fmt.Errorf("only INSERT, UPDATE, DELETE queries are allowed with oracle_execute_write")
 	}
 
 	// Check read-only mode
 	if t.server.readOnly {
-		return "", fmt.Errorf("server is in read-only mode. Set ORACLE_READ_ONLY=false to enable write operations.")
+		return framework.TextResult(""), fmt.Errorf("server is in read-only mode. Set ORACLE_READ_ONLY=false to enable write operations.")
 	}
 
 	result, err := executor.ExecuteWrite(ctx, sql, commit)
 	if err != nil {
-		return "", fmt.Errorf("query execution failed: %w", err)
+		return framework.TextResult(""), err
 	}
 
-	return formatWriteResult(result, commit), nil
+	return framework.TextResult(formatWriteResult(result, commit)), nil
 }
 
-func (t *ExecuteWriteTool) GetEnforcerProfile() *framework.EnforcerProfile {
+func (t *ExecuteWriteTool) EnforcerProfile(args map[string]interface{}) *framework.EnforcerProfile {
+	commit := false
+	if args != nil {
+		commit, _ = args["commit"].(bool)
+	}
+	if commit {
+		return framework.NewEnforcerProfile(
+			framework.WithRisk(framework.RiskHigh),
+			framework.WithImpact(framework.ImpactWrite),
+			framework.WithResourceCost(8),
+			framework.WithPII(true),
+			framework.WithApprovalReq(true),
+		)
+	}
+	// Dry-run / rollback-only mode
 	return framework.NewEnforcerProfile(
-		framework.WithRisk(framework.RiskHigh),
-		framework.WithImpact(framework.ImpactWrite),
+		framework.WithRisk(framework.RiskMed),
+		framework.WithImpact(framework.ImpactRead),
 		framework.WithResourceCost(8),
 		framework.WithPII(true),
-		framework.WithApprovalReq(true),
+		framework.WithApprovalReq(false),
 	)
 }
 
@@ -1014,30 +1027,30 @@ func (t *ExplainQueryTool) Schema() mcp.ToolInputSchema {
 	}
 }
 
-func (t *ExplainQueryTool) Handle(ctx context.Context, args map[string]interface{}) (string, error) {
+func (t *ExplainQueryTool) Handle(ctx framework.CallContext, args map[string]interface{}) (framework.ToolResult, error) {
 	executor, err := t.db.RequireConnection(getDatabaseParam(args, t.db.IsMultiDatabase()))
 	if err != nil {
-		return "", err
+		return framework.TextResult(""), err
 	}
 
 	sql, ok := args["sql"].(string)
 	if !ok || sql == "" {
-		return "", fmt.Errorf("sql is required")
+		return framework.TextResult(""), fmt.Errorf("sql is required")
 	}
 
 	if !isSelectQuery(sql) {
-		return "", fmt.Errorf("only SELECT queries can be explained")
+		return framework.TextResult(""), fmt.Errorf("only SELECT queries can be explained")
 	}
 
 	plan, err := executor.ExplainQuery(ctx, sql)
 	if err != nil {
-		return "", fmt.Errorf("failed to explain query: %w", err)
+		return framework.TextResult(""), fmt.Errorf("failed to explain query: %w", err)
 	}
 
-	return formatExplainPlan(plan), nil
+	return framework.TextResult(formatExplainPlan(plan)), nil
 }
 
-func (t *ExplainQueryTool) GetEnforcerProfile() *framework.EnforcerProfile {
+func (t *ExplainQueryTool) EnforcerProfile(args map[string]interface{}) *framework.EnforcerProfile {
 	return framework.NewEnforcerProfile(
 		framework.WithRisk(framework.RiskLow),
 		framework.WithImpact(framework.ImpactRead),
