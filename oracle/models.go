@@ -32,10 +32,25 @@ type TableInfo struct {
 
 // ColumnInfo holds information about a table column
 type ColumnInfo struct {
-	Name     string `json:"name"`
-	DataType string `json:"type"`
-	Nullable bool   `json:"nullable"`
+	Name          string `json:"name"`
+	DataType      string `json:"type"`
+	Nullable      bool   `json:"nullable"`
+	ScanPolicy    int    `json:"scan_policy"`     // ScanPolicy constant (0 = default)
+	MaxScanLength int    `json:"max_scan_length"` // for truncated columns; 0 = use default
 }
+
+// ScanPolicy constants for PII pipeline
+const (
+	ScanPolicyDefault          int = 0 // use pipeline default
+	ScanPolicySafe             int = 1 // skip scanning - known safe type
+	ScanPolicyNameOnly         int = 2 // scan name heuristic only
+	ScanPolicyStrip            int = 3 // strip binary/no scan
+	ScanPolicyTruncateThenScan int = 4 // truncate then scan
+	ScanPolicyFull             int = 5 // full scan
+)
+
+// DefaultMaxScanLength is the default for truncated text columns
+const DefaultMaxScanLength = 512
 
 // RelationshipInfo holds foreign key relationship information
 type RelationshipInfo struct {

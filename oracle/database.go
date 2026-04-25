@@ -975,6 +975,7 @@ func (c *Connection) loadTableDetails(ctx context.Context, tableName string) (*T
 			return nil, err
 		}
 		col.Nullable = nullable == "Y"
+		col.ScanPolicy, col.MaxScanLength = scanPolicyForColumn(col.DataType)
 		info.Columns = append(info.Columns, col)
 	}
 
