@@ -874,7 +874,13 @@ func (t *ExecuteReadTool) Handle(ctx framework.CallContext, args map[string]inte
 		return framework.TextResult(""), err
 	}
 
-	return framework.TextResult(formatQueryResult(result)), nil
+	// Extract table name and build column hints for PII pipeline
+	hints := buildHintsFromQuery(ctx, result, sql, executor)
+
+	return framework.ToolResult{
+		Data:        result.Rows,
+		ColumnHints: hints,
+	}, nil
 }
 
 func (t *ExecuteReadTool) EnforcerProfile(args map[string]interface{}) *framework.EnforcerProfile {
@@ -962,7 +968,13 @@ func (t *ExecuteWriteTool) Handle(ctx framework.CallContext, args map[string]int
 		return framework.TextResult(""), err
 	}
 
-	return framework.TextResult(formatWriteResult(result, commit)), nil
+	hints := buildHintsFromWriteQuery(ctx, sql, executor)
+
+	return framework.ToolResult{
+		RawText:     formatWriteResult(result, commit),
+		Data:        result.RowsAffected,
+		ColumnHints: hints,
+	}, nil
 }
 
 func (t *ExecuteWriteTool) EnforcerProfile(args map[string]interface{}) *framework.EnforcerProfile {

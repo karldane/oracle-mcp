@@ -73,7 +73,7 @@ func TestHandshakeMetadataPresence(t *testing.T) {
 // Test 1.2: Profile Accuracy
 func TestProfileAccuracy_ExecuteWrite(t *testing.T) {
 	tool := &ExecuteWriteTool{}
-	profile := tool.GetEnforcerProfile()
+	profile := tool.EnforcerProfile(nil)
 
 	if profile.RiskLevel != framework.RiskHigh {
 		t.Errorf("oracle_execute_write should have RiskHigh, got %s", profile.RiskLevel)
@@ -90,7 +90,7 @@ func TestProfileAccuracy_ExecuteWrite(t *testing.T) {
 
 func TestProfileAccuracy_ListTables(t *testing.T) {
 	tool := &ListTablesTool{}
-	profile := tool.GetEnforcerProfile()
+	profile := tool.EnforcerProfile(nil)
 
 	if profile.RiskLevel != framework.RiskLow {
 		t.Errorf("oracle_list_tables should have RiskLow, got %s", profile.RiskLevel)
@@ -107,7 +107,7 @@ func TestProfileAccuracy_ListTables(t *testing.T) {
 
 func TestProfileAccuracy_ExecuteRead(t *testing.T) {
 	tool := &ExecuteReadTool{}
-	profile := tool.GetEnforcerProfile()
+	profile := tool.EnforcerProfile(nil)
 
 	if profile.RiskLevel != framework.RiskMed {
 		t.Errorf("oracle_execute_read should have RiskMed, got %s", profile.RiskLevel)
@@ -395,7 +395,7 @@ func TestGlobalReadOnlyRestriction(t *testing.T) {
 
 	// Verify the write tool's profile reflects this is a write operation
 	tool := &ExecuteWriteTool{db: server.db, server: server}
-	profile := tool.GetEnforcerProfile()
+	profile := tool.EnforcerProfile(nil)
 
 	if profile.ImpactScope != framework.ImpactWrite {
 		t.Errorf("Write tool should have ImpactWrite, got %s", profile.ImpactScope)

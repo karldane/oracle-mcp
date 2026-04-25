@@ -20,7 +20,7 @@ func TestToolDefinitions(t *testing.T) {
 		tool interface {
 			Name() string
 			Description() string
-			GetEnforcerProfile() *framework.EnforcerProfile
+			EnforcerProfile(args map[string]interface{}) *framework.EnforcerProfile
 		}
 		expectedRisk     framework.RiskLevel
 		expectedImpact   framework.ImpactScope
@@ -58,7 +58,7 @@ func TestToolDefinitions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			profile := tt.tool.GetEnforcerProfile()
+			profile := tt.tool.EnforcerProfile(nil)
 
 			if profile.RiskLevel != tt.expectedRisk {
 				t.Errorf("Expected risk %s, got %s", tt.expectedRisk, profile.RiskLevel)
