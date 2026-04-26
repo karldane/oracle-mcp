@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05","capabilities":{"tools":{"listChanged":true}},"serverInfo":{"name":"oracle-mcp","version":"2.0.0"},"instructions":"Oracle MCP Server with multi-database support. Use oracle_connections to check connection status."}}

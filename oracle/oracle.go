@@ -5,6 +5,7 @@ package oracle
 import (
 	"fmt"
 	"log"
+	"os"
 	"strings"
 
 	"github.com/karldane/mcp-framework/framework"
@@ -35,10 +36,21 @@ func NewServer(readOnly bool) (*Server, error) {
 		instructions += "Use oracle_connections to check connection status."
 	}
 
+	// Configure PII pipeline if HMAC key is provided via env
+	piiEnabled := os.Getenv("PII_HMAC_KEY") != ""
+	var piiConfig *framework.PIIPipelineConfig
+	if piiEnabled {
+		piiConfig = &framework.PIIPipelineConfig{
+			HMACKeyEnv: "PII_HMAC_KEY",
+		}
+	}
+
 	config := &framework.Config{
-		Name:         "oracle-mcp",
-		Version:      "2.0.0",
-		Instructions: instructions,
+		Name:           "oracle-mcp",
+		Version:        "2.0.0",
+		Instructions:   instructions,
+		PIIScanEnabled: piiEnabled,
+		PIIConfig:      piiConfig,
 	}
 
 	s := &Server{

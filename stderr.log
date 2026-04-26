@@ -1,0 +1,8 @@
+Oracle MCP Server started in disconnected mode (no database connections)
+Note: Configure ORACLE_CONNECTION_STRING for single connection operation or - 
+ORACLE_CONNECTION_STRING_* environment variables for multiple named database connections
+All tools are registered and available for self-reporting.
+Read-only mode: enabled
+Write tools: disabled (use -write-enabled to enable)
+Registered tools: [oracle_explain_query oracle_execute_read oracle_list_tables oracle_search_tables oracle_get_constraints oracle_get_related_tables oracle_execute_write oracle_connections oracle_describe_table oracle_search_columns oracle_get_indexes]
+Ready to serve requests via stdio...

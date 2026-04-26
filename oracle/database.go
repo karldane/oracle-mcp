@@ -77,7 +77,7 @@ type DatabaseRegistry struct {
 }
 
 // NewDatabaseRegistry creates a new database registry from connection strings
-// env vars. Supports ORACLE_CONNECTION_STRING (single) and ORACLE_CONNECTION_STRING_* (named).
+// env vars. It only parses env vars and does not connect at startup.
 func NewDatabaseRegistry(readOnly bool) (*DatabaseRegistry, error) {
 	registry := &DatabaseRegistry{
 		connections: make(map[string]*Connection),
@@ -122,54 +122,55 @@ func NewDatabaseRegistry(readOnly bool) (*DatabaseRegistry, error) {
 		return nil, fmt.Errorf("cannot use both ORACLE_CONNECTION_STRING and ORACLE_CONNECTION_STRING_* together; choose one or the other")
 	}
 
-	// Create connections
+	// Create connections (in-memory structs only, no I/O)
 	if unnamedConn != "" {
-		// Single unnamed connection
-		conn, err := registry.createConnection("_default", unnamedConn)
-		if err != nil {
-			return nil, fmt.Errorf("failed to connect to default database: %w", err)
-		}
-		registry.connections["_default"] = conn
+		registry.connections["_default"] = registry.newConnection("_default", unnamedConn)
 	} else if len(namedConns) > 0 {
-		// Named connections - connect to all at startup
 		for label, connString := range namedConns {
-			conn, err := registry.createConnection(label, connString)
-			if err != nil {
-				// Failed connections don't stop startup, but are marked as unavailable
-				conn = &Connection{
-					Label:      label,
-					ConnString: connString,
-					Status:     StatusError,
-					ErrorMsg:   err.Error(),
-					ReadOnly:   readOnly,
-				}
-				fmt.Fprintf(os.Stderr, "Warning: Failed to connect to database %s: %v\n", label, err)
-			}
-			registry.connections[label] = conn
-		}
-
-		if len(registry.connections) == 0 {
-			return nil, fmt.Errorf("no valid database connections configured")
+			registry.connections[label] = registry.newConnection(label, connString)
 		}
 	}
 
 	return registry, nil
 }
 
-func (r *DatabaseRegistry) createConnection(label, connString string) (*Connection, error) {
-	if connString == "" {
-		return &Connection{
-			Label:      label,
-			ConnString: "",
-			Status:     StatusDisconnected,
-			ReadOnly:   r.readOnly,
-		}, nil
+// newConnection creates a Connection struct without connecting to the DB.
+func (r *DatabaseRegistry) newConnection(label, connString string) *Connection {
+	// Derive a schema name from the conn string for display purposes before connection.
+	// user/pass@host:port/service -> user
+	var schema string
+	if parts := strings.Split(connString, "@"); len(parts) > 0 {
+		if userPart := strings.Split(parts[0], "/"); len(userPart) > 0 {
+			schema = userPart[0]
+		}
+	}
+
+	cachePath := filepath.Join(r.cacheDir, fmt.Sprintf("%s_%s.json", strings.ToLower(schema), label))
+
+	return &Connection{
+		Label:      label,
+		ConnString: connString,
+		Status:     StatusAvailable,
+		ReadOnly:   r.readOnly,
+		schema:     strings.ToUpper(schema), // Temporary schema
+		cachePath:  cachePath,
+	}
+}
+
+// connect establishes a database connection for a Connection struct.
+// It is intended to be called lazily by GetConnection.
+func (c *Connection) connect() error {
+	if c.ConnString == "" {
+		c.Status = StatusDisconnected
+		return fmt.Errorf("no connection string provided")
 	}
 
 	// Open connection
-	db, err := sql.Open("oracle", connString)
+	db, err := sql.Open("oracle", c.ConnString)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open database: %w", err)
+		c.Status = StatusError
+		c.ErrorMsg = err.Error()
+		return fmt.Errorf("failed to open database: %w", err)
 	}
 
 	// Test connection
@@ -178,7 +179,9 @@ func (r *DatabaseRegistry) createConnection(label, connString string) (*Connecti
 
 	if err := db.PingContext(ctx); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("failed to connect: %w", err)
+		c.Status = StatusError
+		c.ErrorMsg = err.Error()
+		return fmt.Errorf("failed to connect: %w", err)
 	}
 
 	// Get current schema
@@ -186,21 +189,18 @@ func (r *DatabaseRegistry) createConnection(label, connString string) (*Connecti
 	row := db.QueryRowContext(ctx, "SELECT USER FROM DUAL")
 	if err := row.Scan(&schema); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("failed to get schema: %w", err)
+		c.Status = StatusError
+		c.ErrorMsg = err.Error()
+		return fmt.Errorf("failed to get schema: %w", err)
 	}
 
-	schemaLower := strings.ToLower(schema)
-	cachePath := filepath.Join(r.cacheDir, fmt.Sprintf("%s_%s.json", schemaLower, label))
+	// Update connection state
+	c.DB = db
+	c.schema = strings.ToUpper(schema)
+	c.Status = StatusConnected
+	c.ErrorMsg = ""
 
-	return &Connection{
-		Label:      label,
-		ConnString: connString,
-		DB:         db,
-		schema:     strings.ToUpper(schema),
-		Status:     StatusConnected,
-		ReadOnly:   r.readOnly,
-		cachePath:  cachePath,
-	}, nil
+	return nil
 }
 
 // ListConnections returns all configured connections with their status
@@ -223,7 +223,7 @@ func (r *DatabaseRegistry) ListConnections() []ConnectionInfo {
 	return infos
 }
 
-// GetConnection returns a connection by label, reconnecting if necessary
+// GetConnection returns a connection by label, connecting lazily if necessary.
 func (r *DatabaseRegistry) GetConnection(label string) (*Connection, error) {
 	r.mu.RLock()
 	conn, exists := r.connections[label]
@@ -234,31 +234,28 @@ func (r *DatabaseRegistry) GetConnection(label string) (*Connection, error) {
 	}
 
 	// If already connected, return it
-	if conn.Status == StatusConnected && conn.DB != nil {
+	if conn.Status == StatusConnected {
 		return conn, nil
 	}
 
-	// Try to reconnect
+	// If permanently failed or disconnected, return error
+	if conn.Status == StatusError || conn.Status == StatusDisconnected {
+		return nil, fmt.Errorf("database %s is unavailable (status: %s, error: %s)", label, conn.Status, conn.ErrorMsg)
+	}
+
+	// Try to connect (with a write lock to prevent concurrent connection attempts)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// Double-check after acquiring write lock
-	if conn.Status == StatusConnected && conn.DB != nil {
+	// Double-check after acquiring write lock, in case another goroutine just connected.
+	if conn.Status == StatusConnected {
 		return conn, nil
 	}
 
-	newConn, err := r.createConnection(label, conn.ConnString)
-	if err != nil {
-		conn.Status = StatusError
-		conn.ErrorMsg = err.Error()
-		return nil, fmt.Errorf("failed to connect to database %s: %w", label, err)
+	// Perform the actual connection
+	if err := conn.connect(); err != nil {
+		return nil, err // conn.connect() updates status and error message
 	}
-
-	conn.DB = newConn.DB
-	conn.schema = newConn.schema
-	conn.Status = newConn.Status
-	conn.ErrorMsg = ""
-	conn.cachePath = newConn.cachePath
 
 	return conn, nil
 }
