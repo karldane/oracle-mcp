@@ -93,7 +93,6 @@ func NewDatabaseRegistry(readOnly bool) (*DatabaseRegistry, error) {
 	var unnamedConn string
 	namedConns := make(map[string]string) // lowercase label -> original label + conn string
 
-	fmt.Fprintf(os.Stderr, "[DEBUG] Searching for ORACLE_CONNECTION_STRING env vars...\n")
 	for _, env := range os.Environ() {
 		parts := strings.SplitN(env, "=", 2)
 		if len(parts) != 2 {
@@ -102,10 +101,8 @@ func NewDatabaseRegistry(readOnly bool) (*DatabaseRegistry, error) {
 		key := parts[0]
 		value := parts[1]
 
-		fmt.Fprintf(os.Stderr, "[DEBUG] Checking env var: %s\n", key)
 
 		if key == "ORACLE_CONNECTION_STRING" {
-			fmt.Fprintf(os.Stderr, "[DEBUG] Found ORACLE_CONNECTION_STRING: %s\n", value)
 			unnamedConn = value
 		} else if strings.HasPrefix(key, "ORACLE_CONNECTION_STRING_") {
 			label := strings.ToLower(strings.TrimPrefix(key, "ORACLE_CONNECTION_STRING_"))
@@ -121,7 +118,6 @@ func NewDatabaseRegistry(readOnly bool) (*DatabaseRegistry, error) {
 		}
 	}
 
-	fmt.Fprintf(os.Stderr, "[DEBUG] unnamedConn: %q, namedConns count: %d\n", unnamedConn, len(namedConns))
 
 	// Detect conflict: both unnamed and named connections
 	if unnamedConn != "" && len(namedConns) > 0 {
@@ -166,24 +162,20 @@ func (r *DatabaseRegistry) newConnection(label, connString string) *Connection {
 // connect establishes a database connection for a Connection struct.
 // It is intended to be called lazily by GetConnection.
 func (c *Connection) connect() error {
-	fmt.Fprintf(os.Stderr, "[DEBUG] connect(): ConnString=%q\n", c.ConnString)
 	if c.ConnString == "" {
 		c.Status = StatusDisconnected
 		return fmt.Errorf("no connection string provided")
 	}
 
 	// Open connection
-	fmt.Fprintf(os.Stderr, "[DEBUG] connect(): Opening DB with sql.Open(\"oracle\", %q)\n", c.ConnString)
 	db, err := sql.Open("oracle", c.ConnString)
 	if err != nil {
 		c.Status = StatusError
 		c.ErrorMsg = err.Error()
-		fmt.Fprintf(os.Stderr, "[DEBUG] connect(): sql.Open error: %v\n", err)
 		return fmt.Errorf("failed to open database: %w", err)
 	}
 
 	// Test connection
-	fmt.Fprintf(os.Stderr, "[DEBUG] connect(): Testing connection with PingContext\n")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -191,19 +183,16 @@ func (c *Connection) connect() error {
 		db.Close()
 		c.Status = StatusError
 		c.ErrorMsg = err.Error()
-		fmt.Fprintf(os.Stderr, "[DEBUG] connect(): PingContext error: %v\n", err)
 		return fmt.Errorf("failed to connect: %w", err)
 	}
 
 	// Get current schema
-	fmt.Fprintf(os.Stderr, "[DEBUG] connect(): Getting schema from DUAL\n")
 	var schema string
 	row := db.QueryRowContext(ctx, "SELECT USER FROM DUAL")
 	if err := row.Scan(&schema); err != nil {
 		db.Close()
 		c.Status = StatusError
 		c.ErrorMsg = err.Error()
-		fmt.Fprintf(os.Stderr, "[DEBUG] connect(): QueryRowContext error: %v\n", err)
 		return fmt.Errorf("failed to get schema: %w", err)
 	}
 
@@ -212,7 +201,6 @@ func (c *Connection) connect() error {
 	c.schema = strings.ToUpper(schema)
 	c.Status = StatusConnected
 	c.ErrorMsg = ""
-	fmt.Fprintf(os.Stderr, "[DEBUG] connect(): Connected successfully! Schema=%s\n", schema)
 
 	return nil
 }
@@ -306,16 +294,12 @@ func (r *DatabaseRegistry) RequireConnection(database string) (QueryExecutor, er
 		database = "_default"
 	}
 
-	fmt.Fprintf(os.Stderr, "[DEBUG] RequireConnection: database=%s\n", database)
 	conn, err := r.GetConnection(database)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[DEBUG] GetConnection error: %v\n", err)
 		return nil, err
 	}
 
-	fmt.Fprintf(os.Stderr, "[DEBUG] GetConnection: conn=%p, Status=%s, DB=%p\n", conn, conn.Status, conn.DB)
 	if conn.Status != StatusConnected || conn.DB == nil {
-		fmt.Fprintf(os.Stderr, "[DEBUG] Connection not ready: status=%s, DB=%p\n", conn.Status, conn.DB)
 		return nil, fmt.Errorf("database %s is not connected (status: %s)", database, conn.Status)
 	}
 
