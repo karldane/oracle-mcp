@@ -1223,8 +1223,8 @@ func TestRequireConnection_DisconnectedDatabase(t *testing.T) {
 		t.Error("Expected error for disconnected database")
 	}
 
-	if !strings.Contains(err.Error(), "not connected") {
-		t.Errorf("Expected error about 'not connected', got: %v", err)
+	if !strings.Contains(err.Error(), "unavailable") {
+		t.Errorf("Expected error about 'unavailable', got: %v", err)
 	}
 }
 
@@ -2094,13 +2094,13 @@ func TestCreateConnection_EmptyString(t *testing.T) {
 		connections: make(map[string]*Connection),
 	}
 
-	conn, err := registry.createConnection("test", "")
-	if err != nil {
-		t.Errorf("Expected no error for empty connection string, got: %v", err)
+	conn := registry.newConnection("test", "")
+	if conn == nil {
+		t.Error("Expected non-nil connection")
 	}
 
-	if conn.Status != StatusDisconnected {
-		t.Errorf("Expected StatusDisconnected, got %s", conn.Status)
+	if conn.Status != StatusAvailable {
+		t.Errorf("Expected StatusAvailable, got %s", conn.Status)
 	}
 }
 
@@ -2371,7 +2371,7 @@ func TestGetConstraintsTool_Handle_EmptyResults(t *testing.T) {
 		"table_name": "NONEXISTENT_TABLE",
 	})
 	// May return error or empty results depending on DB
-	t.Logf("Result: %s, Error: %v", result, err)
+	t.Logf("Result: %v, Error: %v", result, err)
 }
 
 // ============================================================================
@@ -2396,7 +2396,7 @@ func TestGetIndexesTool_Handle_EmptyResults(t *testing.T) {
 		"table_name": "NONEXISTENT_TABLE",
 	})
 	// May return error or empty results depending on DB
-	t.Logf("Result: %s, Error: %v", result, err)
+	t.Logf("Result: %v, Error: %v", result, err)
 }
 
 // ============================================================================
@@ -2421,7 +2421,7 @@ func TestGetRelatedTablesTool_Handle_EmptyResults(t *testing.T) {
 		"table_name": "NONEXISTENT_TABLE",
 	})
 	// May return error or empty results depending on DB
-	t.Logf("Result: %s, Error: %v", result, err)
+	t.Logf("Result: %v, Error: %v", result, err)
 }
 
 // ============================================================================
@@ -5618,7 +5618,7 @@ func TestListTablesTool_Handle_WithLimitMock(t *testing.T) {
 
 	// Should contain 3 tables (A, B, C)
 	if !strings.Contains(result.RawText, "Found 3 tables") {
-		t.Errorf("Expected result to show 3 tables, got: %s", result)
+		t.Errorf("Expected result to show 3 tables, got: %v", result)
 	}
 }
 
@@ -5678,7 +5678,7 @@ func TestDescribeTableTool_Handle_WithMockDB(t *testing.T) {
 
 	// Verify result contains expected columns
 	if !strings.Contains(result.RawText, "ID") || !strings.Contains(result.RawText, "NAME") {
-		t.Errorf("Expected result to contain column names, got: %s", result)
+		t.Errorf("Expected result to contain column names, got: %v", result)
 	}
 }
 
@@ -5725,7 +5725,7 @@ func TestSearchTablesTool_Handle_WithMockDB(t *testing.T) {
 
 	// Verify result contains expected tables
 	if !strings.Contains(result.RawText, "USER_ACCOUNTS") || !strings.Contains(result.RawText, "USER_PROFILES") {
-		t.Errorf("Expected result to contain searched tables, got: %s", result)
+		t.Errorf("Expected result to contain searched tables, got: %v", result)
 	}
 }
 
@@ -5776,7 +5776,7 @@ func TestGetConstraintsTool_Handle_WithMockDB(t *testing.T) {
 	}
 
 	if !strings.Contains(result.RawText, "PRIMARY KEY") {
-		t.Errorf("Expected result to contain PRIMARY KEY, got: %s", result)
+		t.Errorf("Expected result to contain PRIMARY KEY, got: %v", result)
 	}
 }
 
@@ -5827,7 +5827,7 @@ func TestGetIndexesTool_Handle_WithMockDB(t *testing.T) {
 	}
 
 	if !strings.Contains(result.RawText, "UNIQUE") {
-		t.Errorf("Expected result to contain UNIQUE, got: %s", result)
+		t.Errorf("Expected result to contain UNIQUE, got: %v", result)
 	}
 }
 
@@ -5877,7 +5877,7 @@ func TestGetRelatedTablesTool_Handle_WithMockDB(t *testing.T) {
 	}
 
 	if !strings.Contains(result.RawText, "DEPARTMENTS") || !strings.Contains(result.RawText, "ORDERS") {
-		t.Errorf("Expected result to contain related tables, got: %s", result)
+		t.Errorf("Expected result to contain related tables, got: %v", result)
 	}
 }
 
@@ -5997,6 +5997,6 @@ func TestExplainQueryTool_Handle_WithMockDB(t *testing.T) {
 	}
 
 	if !strings.Contains(result.RawText, "Execution Plan") {
-		t.Errorf("Expected result to contain execution plan, got: %s", result)
+		t.Errorf("Expected result to contain execution plan, got: %v", result)
 	}
 }
