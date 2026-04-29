@@ -1,2 +1,0 @@
-2026/04/26 15:34:09 WARN API key is being used without TLS(HTTPS). It will be transmitted in plaintext.
-Failed to start qdrant-mcp: ensure collection: check collection "dummy": CollectionExists() failed: dummy: rpc error: code = Unavailable desc = connection error: desc = "transport: Error while dialing: dial tcp [::1]:6333: connect: connection refused"

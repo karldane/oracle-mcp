@@ -219,7 +219,7 @@ func (t *ListConnectionsTool) EnforcerProfile(args map[string]interface{}) *fram
 		framework.WithRisk(framework.RiskLow),
 		framework.WithImpact(framework.ImpactRead),
 		framework.WithResourceCost(1),
-		framework.WithPII(false),
+		framework.WithPII(true),
 	)
 }
 
@@ -297,7 +297,7 @@ func (t *ListTablesTool) EnforcerProfile(args map[string]interface{}) *framework
 		framework.WithRisk(framework.RiskLow),
 		framework.WithImpact(framework.ImpactRead),
 		framework.WithResourceCost(2),
-		framework.WithPII(false),
+		framework.WithPII(true),
 	)
 }
 
@@ -367,7 +367,7 @@ func (t *DescribeTableTool) EnforcerProfile(args map[string]interface{}) *framew
 		framework.WithRisk(framework.RiskLow),
 		framework.WithImpact(framework.ImpactRead),
 		framework.WithResourceCost(3),
-		framework.WithPII(false),
+		framework.WithPII(true),
 	)
 }
 
@@ -453,7 +453,7 @@ func (t *SearchTablesTool) EnforcerProfile(args map[string]interface{}) *framewo
 		framework.WithRisk(framework.RiskLow),
 		framework.WithImpact(framework.ImpactRead),
 		framework.WithResourceCost(3),
-		framework.WithPII(false),
+		framework.WithPII(true),
 	)
 }
 
@@ -553,7 +553,7 @@ func (t *SearchColumnsTool) EnforcerProfile(args map[string]interface{}) *framew
 		framework.WithRisk(framework.RiskLow),
 		framework.WithImpact(framework.ImpactRead),
 		framework.WithResourceCost(4),
-		framework.WithPII(false),
+		framework.WithPII(true),
 	)
 }
 
@@ -640,7 +640,7 @@ func (t *GetConstraintsTool) EnforcerProfile(args map[string]interface{}) *frame
 		framework.WithRisk(framework.RiskLow),
 		framework.WithImpact(framework.ImpactRead),
 		framework.WithResourceCost(3),
-		framework.WithPII(false),
+		framework.WithPII(true),
 	)
 }
 
@@ -726,7 +726,7 @@ func (t *GetIndexesTool) EnforcerProfile(args map[string]interface{}) *framework
 		framework.WithRisk(framework.RiskLow),
 		framework.WithImpact(framework.ImpactRead),
 		framework.WithResourceCost(3),
-		framework.WithPII(false),
+		framework.WithPII(true),
 	)
 }
 
@@ -814,7 +814,7 @@ func (t *GetRelatedTablesTool) EnforcerProfile(args map[string]interface{}) *fra
 		framework.WithRisk(framework.RiskLow),
 		framework.WithImpact(framework.ImpactRead),
 		framework.WithResourceCost(3),
-		framework.WithPII(false),
+		framework.WithPII(true),
 	)
 }
 
@@ -1083,7 +1083,7 @@ func (t *ExplainQueryTool) EnforcerProfile(args map[string]interface{}) *framewo
 		framework.WithRisk(framework.RiskLow),
 		framework.WithImpact(framework.ImpactRead),
 		framework.WithResourceCost(4),
-		framework.WithPII(false),
+		framework.WithPII(true),
 	)
 }
 

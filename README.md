@@ -11,6 +11,7 @@ This server provides secure, controlled access to Oracle databases with the foll
 - **Safety First**: All tools include `EnforcerProfile` metadata for automated policy enforcement
 - **Read-Only by Default**: Write operations require explicit opt-in via environment variable and command-line flag
 - **Transactional Safety**: Write operations use transactions with rollback-by-default protection
+- **PII Detection**: Automatic detection of Personally Identifiable Information (PII) columns via name heuristics, with name-only scanning for appropriate protection
 
 ## Tools
 
@@ -21,7 +22,7 @@ This server provides secure, controlled access to Oracle databases with the foll
 | `oracle_list_tables` | List all tables in the database | Low | Read | No |
 | `oracle_describe_table` | Get table schema (columns, relationships) | Low | Read | No |
 | `oracle_search_tables` | Search tables by name pattern | Low | Read | No |
-| `oracle_search_columns` | Search columns across all tables | Low | Read | No |
+| `oracle_search_columns` | Search columns across all tables (includes PII detection) | Low | Read | No |
 | `oracle_get_constraints` | Get PK/FK/UNIQUE/CHECK constraints | Low | Read | No |
 | `oracle_get_indexes` | Get table indexes | Low | Read | No |
 | `oracle_get_related_tables` | Get FK relationships | Low | Read | No |
@@ -31,7 +32,7 @@ This server provides secure, controlled access to Oracle databases with the foll
 
 | Tool | Description | Risk | Impact | Approval |
 |------|-------------|------|--------|----------|
-| `oracle_execute_read` | Execute SELECT queries (100 row limit) | Med | Read | Yes |
+| `oracle_execute_read` | Execute SELECT queries (100 row limit) - All tools declare WithPII(true) for potential PII exposure | Med | Read | Yes |
 | `oracle_execute_write` | Execute INSERT/UPDATE/DELETE | High | Write | Yes |
 
 ## Installation
@@ -143,6 +144,14 @@ type EnforcerProfile struct {
 
 This metadata is transmitted to the MCP Bridge during the `tools/list` handshake, enabling automated policy enforcement.
 
+### PII Detection
+
+The server automatically detects Personally Identifiable Information (PII) columns via name heuristics:
+- Detects both bare names (e.g., `FIRST_NAME`, `EMAIL`) and Oracle-prefixed variants (e.g., `CONT_FIRSTNAME`, `CONT_EMAIL`)
+- Applies name-only scanning (`ScanPolicyNameOnly`) to PII columns for appropriate protection
+- All query tools declare `WithPII(true)` in EnforcerProfile indicating potential PII exposure
+- Uses HMAC-based hashing when `ORACLE_PII_HMAC_KEY` is provided
+
 ### Query Classification
 
 The server automatically classifies SQL:
@@ -163,6 +172,35 @@ All SELECT queries are automatically limited to prevent resource exhaustion:
 Write operations use transactions:
 - **Default**: Rollback (dry-run mode)
 - **Commit**: Only when `commit=true` parameter is set
+
+## PII Detection Features
+
+The server includes enhanced Personally Identifiable Information (PII) detection capabilities:
+
+### Automatic PII Column Detection
+- Detects PII columns via name heuristics using suffix-anchored patterns
+- Identifies both bare names (e.g., `FIRST_NAME`, `EMAIL`) and Oracle-prefixed variants (e.g., `CONT_FIRSTNAME`, `CONT_EMAIL`, `CONT_SURNAME`)
+- Uses `IsPIIColumn()` function for reliable pattern matching
+- Excludes false positives like mid-string matches (e.g., "PERFORMANCE_SURNAME_RANK" doesn't match SURNAME)
+
+### Intelligent Scanning Policies
+- PII columns automatically receive `ScanPolicyNameOnly` for appropriate protection
+- Name-only scanning is ideal for free-text data like names and email addresses
+- Existing data-based PII detection (for emails, phones) continues to function
+- PII pipeline applies HMAC-based hashing when `ORACLE_PII_HMAC_KEY` is provided
+
+### Self-Reporting Metadata
+- All query tools declare `WithPII(true)` in EnforcerProfile
+- Indicates potential exposure to person-sensitive data
+- Enables automated policy enforcement via MCP Bridge
+- Helps administrators understand data sensitivity implications
+
+### Supported PII Patterns
+The server detects column names matching these patterns:
+- **Names**: FIRST_?NAME, LAST_?NAME, SURNAME, FORENAME, GIVEN_?NAME, FAMILY_?NAME, FULL_?NAME, MIDDLE_?NAME
+- **Contact**: EMAIL(_ADDR(ESS)?)?, PHONE(_NO|_NUM|_NUMBER)?, MOBILE(_NO|_NUM|_NUMBER)?, FAX(_NO|_NUM|_NUMBER)?
+- **Address**: POST_?CODE, ZIP(_CODE)?, ADDR(ESS)?(_LINE[0-9])?
+- **Identity**: DOB, DATE_OF_BIRTH, NI_?(NO|NUMBER)?, SSN, PASSPORT(_NO|_NUMBER)?
 
 ## Architecture
 
@@ -193,10 +231,13 @@ Tests cover:
 - Query classification and injection prevention
 - Transactional integrity
 - Read-only mode enforcement
+- PII column detection and name-only scanning
 
 ## Acknowledgments
 
 This project was inspired by and builds upon the excellent work of [Daniel Meppiel](https://github.com/danielmeppiel) and his [oracle-mcp-server](https://github.com/danielmeppiel/oracle-mcp-server) project. We are grateful for his contributions to the MCP ecosystem.
+
+The PII (Personally Identifiable Information) detection enhancements were implemented by Karl Dane to improve column-level privacy protection in Oracle database interactions.
 
 ### Ported Features
 
@@ -210,6 +251,7 @@ The following features were adapted from the original Python implementation:
 - **Index Information**: Table index metadata
 - **Read-Only Mode**: Default security mode preventing write operations
 - **Schema Caching**: Persistent cache to minimize database queries
+- **PII Detection**: Enhanced Personally Identifiable Information column detection with name-only scanning (new in Go implementation)
 
 ### Technical Differences
 
@@ -219,6 +261,7 @@ While inspired by the original, this Go implementation differs in several ways:
 - **Driver**: Uses `go-ora` pure Go driver (no Oracle Instant Client required)
 - **Architecture**: Built on [mcp-framework](https://github.com/karldane/mcp-framework) with EnforcerProfile safety metadata
 - **Safety**: Self-reporting risk metadata for automated policy enforcement
+- **PII Detection**: Enhanced Personally Identifiable Information column detection with name-only scanning
 - **Build**: Single static binary with no external dependencies
 
 ### License Attribution
