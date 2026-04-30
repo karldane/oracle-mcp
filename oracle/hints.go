@@ -2,6 +2,8 @@ package oracle
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"strings"
 
 	"github.com/karldane/mcp-framework/framework"
@@ -66,52 +68,69 @@ func BuildColumnHints(columns []ColumnInfo) map[string]framework.ColumnHint {
 	hints := make(map[string]framework.ColumnHint, len(columns))
 	for _, col := range columns {
 		scanPolicy := framework.ScanPolicy(col.ScanPolicy)
+		entityType := ""
 		// If column is detected as PII via name heuristic, use name-only scan
-		if IsPIIColumn(col.Name) {
+		nameMatch := isNameColumn(col.Name)
+		if nameMatch {
 			scanPolicy = framework.ScanPolicyNameOnly
+			entityType = "PERSON"
+		} else if isAddressColumn(col.Name) {
+			scanPolicy = framework.ScanPolicyNameOnly
+			entityType = "UK_POSTCODE"
+		} else if isDOBColumn(col.Name) {
+			scanPolicy = framework.ScanPolicyNameOnly
+			entityType = "DATE_OF_BIRTH"
+		} else if IsPIIColumn(col.Name) {
+			// Handle other PII columns (email, phone, etc.)
+			entityType = getEntityType(col.Name)
 		}
 		hints[col.Name] = framework.ColumnHint{
 			ScanPolicy: scanPolicy,
 			MaxLength:  col.MaxScanLength,
+			EntityType: entityType,
+		}
+		if col.Name == "CONT_FIRSTNAME" || col.Name == "CONT_SURNAME" || col.Name == "CONT_EMAIL" {
+			fmt.Fprintf(os.Stderr, "[DEBUG] BuildColumnHints: col=%s, scanPolicy=%d, isNameMatch=%v, entityType=%s\n", col.Name, scanPolicy, nameMatch, entityType)
 		}
 	}
 	return hints
 }
 
 func buildHintsFromQuery(ctx context.Context, result *QueryResult, sql string, executor QueryExecutor) map[string]framework.ColumnHint {
-	// Build hints directly from query result column names
-	// This is more robust than relying on table schema cache
-	if len(result.Columns) == 0 {
-		// Fallback to table schema if no columns in result
-		tableName := extractTableName(sql)
-		if tableName == "" {
-			return nil
+	// Primary: schema cache - has full data type + column name info
+	tableName := extractTableName(sql)
+	if tableName != "" {
+		if tableInfo, err := executor.GetTableInfo(ctx, tableName); err == nil && tableInfo != nil && len(tableInfo.Columns) > 0 {
+			return BuildColumnHints(tableInfo.Columns)
 		}
-		tableInfo, err := executor.GetTableInfo(ctx, tableName)
-		if err != nil || tableInfo == nil || len(tableInfo.Columns) == 0 {
-			return nil
-		}
-		return BuildColumnHints(tableInfo.Columns)
 	}
 
-	// Build hints from result columns directly
-	hints := make(map[string]framework.ColumnHint, len(result.Columns))
-	for _, colName := range result.Columns {
-		scanPolicy := framework.ScanPolicyDefault
+	// Fallback: result column names only - no data type info, name heuristics only
+	// Covers JOINs, CTEs, aliased queries where schema cache can't resolve
+	if result != nil && len(result.Columns) > 0 {
+		return buildHintsFromColumnNames(result.Columns)
+	}
+
+	return nil
+}
+
+func buildHintsFromColumnNames(columns []string) map[string]framework.ColumnHint {
+	hints := make(map[string]framework.ColumnHint, len(columns))
+	for _, col := range columns {
+		policy := ScanPolicyFull
 		entityType := ""
-		if IsPIIColumn(colName) {
-			entityType = getEntityType(colName)
-			// For email/phone, use name-only to allow value scanning by pipeline
-			// For names, use default to allow full scanning (though NLP may not detect)
-			if entityType == "EMAIL_ADDRESS" || entityType == "PHONE_NUMBER" {
-				scanPolicy = framework.ScanPolicyNameOnly
-			} else {
-				scanPolicy = framework.ScanPolicyDefault
-			}
+		if isNameColumn(col) {
+			policy = ScanPolicyNameOnly
+			entityType = "PERSON"
+		} else if isAddressColumn(col) {
+			policy = ScanPolicyNameOnly
+			entityType = "UK_POSTCODE" // or location-based
+		} else if isDOBColumn(col) {
+			policy = ScanPolicyNameOnly
+			entityType = "DATE_OF_BIRTH"
 		}
-		hints[colName] = framework.ColumnHint{
-			ScanPolicy: scanPolicy,
-			MaxLength:  0,
+		hints[col] = framework.ColumnHint{
+			ScanPolicy: framework.ScanPolicy(policy),
 			EntityType: entityType,
 		}
 	}

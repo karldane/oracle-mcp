@@ -101,7 +101,6 @@ func NewDatabaseRegistry(readOnly bool) (*DatabaseRegistry, error) {
 		key := parts[0]
 		value := parts[1]
 
-
 		if key == "ORACLE_CONNECTION_STRING" {
 			unnamedConn = value
 		} else if strings.HasPrefix(key, "ORACLE_CONNECTION_STRING_") {
@@ -117,7 +116,6 @@ func NewDatabaseRegistry(readOnly bool) (*DatabaseRegistry, error) {
 			namedConns[label] = value
 		}
 	}
-
 
 	// Detect conflict: both unnamed and named connections
 	if unnamedConn != "" && len(namedConns) > 0 {
@@ -974,7 +972,7 @@ func (c *Connection) loadTableDetails(ctx context.Context, tableName string) (*T
 			return nil, err
 		}
 		col.Nullable = nullable == "Y"
-		col.ScanPolicy, col.MaxScanLength = scanPolicyForColumn(col.DataType)
+		col.ScanPolicy, col.MaxScanLength = scanPolicyForColumn(col.Name, col.DataType)
 		info.Columns = append(info.Columns, col)
 	}
 
