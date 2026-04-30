@@ -36,11 +36,11 @@ func NewServer(readOnly bool) (*Server, error) {
 	}
 
 	// Configure PII pipeline if HMAC key is provided via env
-	piiEnabled := os.Getenv("PII_HMAC_KEY") != ""
+	piiEnabled := os.Getenv("ORACLE_PII_HMAC_KEY") != ""
 	var piiConfig *framework.PIIPipelineConfig
 	if piiEnabled {
 		piiConfig = &framework.PIIPipelineConfig{
-			HMACKeyEnv: "PII_HMAC_KEY",
+			HMACKeyEnv: "ORACLE_PII_HMAC_KEY",
 		}
 	}
 
