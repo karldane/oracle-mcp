@@ -100,8 +100,14 @@ func buildHintsFromQuery(ctx context.Context, result *QueryResult, sql string, e
 		scanPolicy := framework.ScanPolicyDefault
 		entityType := ""
 		if IsPIIColumn(colName) {
-			scanPolicy = framework.ScanPolicyNameOnly
 			entityType = getEntityType(colName)
+			// For email/phone, use name-only to allow value scanning by pipeline
+			// For names, use default to allow full scanning (though NLP may not detect)
+			if entityType == "EMAIL_ADDRESS" || entityType == "PHONE_NUMBER" {
+				scanPolicy = framework.ScanPolicyNameOnly
+			} else {
+				scanPolicy = framework.ScanPolicyDefault
+			}
 		}
 		hints[colName] = framework.ColumnHint{
 			ScanPolicy: scanPolicy,

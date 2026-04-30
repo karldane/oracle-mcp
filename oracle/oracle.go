@@ -4,7 +4,6 @@ package oracle
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/karldane/mcp-framework/framework"
@@ -36,13 +35,8 @@ func NewServer(readOnly bool) (*Server, error) {
 	}
 
 	// Configure PII pipeline if HMAC key is provided via env
-	piiEnabled := os.Getenv("ORACLE_PII_HMAC_KEY") != ""
-	var piiConfig *framework.PIIPipelineConfig
-	if piiEnabled {
-		piiConfig = &framework.PIIPipelineConfig{
-			HMACKeyEnv: "ORACLE_PII_HMAC_KEY",
-		}
-	}
+	piiConfig := buildPIIConfig()
+	piiEnabled := piiConfig != nil
 
 	config := &framework.Config{
 		Name:           "oracle-mcp",
