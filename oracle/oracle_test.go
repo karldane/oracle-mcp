@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/karldane/mcp-framework/framework"
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 func TestServerCreation(t *testing.T) {
@@ -289,5 +290,148 @@ func TestPIIConfigMinConfidence(t *testing.T) {
 	}
 	if cfg.MinConfidence != 0.8 {
 		t.Errorf("Expected MinConfidence to be 0.8, got %f", cfg.MinConfidence)
+	}
+}
+
+func TestOutputSchemaMethods(t *testing.T) {
+	tests := []struct {
+		name string
+		tool interface {
+			OutputSchema() *mcp.ToolOutputSchema
+		}
+		wantNil   bool
+		wantType  string
+		wantProps []string
+	}{
+		{
+			name:      "ListTablesTool",
+			tool:      &ListTablesTool{},
+			wantNil:   false,
+			wantType:  "object",
+			wantProps: []string{"tables", "count"},
+		},
+		{
+			name:      "DescribeTableTool",
+			tool:      &DescribeTableTool{},
+			wantNil:   false,
+			wantType:  "object",
+			wantProps: []string{"table", "columns"},
+		},
+		{
+			name:      "ExecuteReadTool",
+			tool:      &ExecuteReadTool{},
+			wantNil:   false,
+			wantType:  "object",
+			wantProps: []string{"rows", "row_count", "columns"},
+		},
+		{
+			name:      "ExecuteWriteTool",
+			tool:      &ExecuteWriteTool{},
+			wantNil:   true,
+			wantType:  "",
+			wantProps: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			schema := tt.tool.OutputSchema()
+
+			if tt.wantNil {
+				if schema != nil {
+					t.Errorf("Expected nil OutputSchema, got %+v", schema)
+				}
+				return
+			}
+
+			if schema == nil {
+				t.Fatalf("Expected non-nil OutputSchema")
+			}
+
+			if schema.Type != tt.wantType {
+				t.Errorf("Expected type %q, got %q", tt.wantType, schema.Type)
+			}
+
+			for _, prop := range tt.wantProps {
+				if _, ok := schema.Properties[prop]; !ok {
+					t.Errorf("Expected property %q not found in OutputSchema.Properties", prop)
+				}
+			}
+		})
+	}
+}
+
+func TestOutputSchemaListTablesDetails(t *testing.T) {
+	tool := &ListTablesTool{}
+	schema := tool.OutputSchema()
+
+	if schema == nil {
+		t.Fatal("Expected non-nil OutputSchema")
+	}
+
+	tables, ok := schema.Properties["tables"].(map[string]interface{})
+	if !ok {
+		t.Fatal("Expected tables property to be a map")
+	}
+
+	if tables["type"] != "array" {
+		t.Errorf("Expected tables type to be 'array', got %v", tables["type"])
+	}
+
+	count, ok := schema.Properties["count"].(map[string]interface{})
+	if !ok {
+		t.Fatal("Expected count property to be a map")
+	}
+
+	if count["type"] != "integer" {
+		t.Errorf("Expected count type to be 'integer', got %v", count["type"])
+	}
+}
+
+func TestOutputSchemaExecuteReadHasPIIFields(t *testing.T) {
+	tool := &ExecuteReadTool{}
+	schema := tool.OutputSchema()
+
+	if schema == nil {
+		t.Fatal("Expected non-nil OutputSchema")
+	}
+
+	columns, ok := schema.Properties["columns"].(map[string]interface{})
+	if !ok {
+		t.Fatal("Expected columns property to be a map")
+	}
+
+	items, ok := columns["items"].(map[string]interface{})
+	if !ok {
+		t.Fatal("Expected columns.items to be a map")
+	}
+
+	props, ok := items["properties"].(map[string]interface{})
+	if !ok {
+		t.Fatal("Expected columns.items.properties to be a map")
+	}
+
+	piiFields := []string{"name", "pii_detected", "entity_types", "treatment"}
+	for _, field := range piiFields {
+		if _, ok := props[field]; !ok {
+			t.Errorf("Expected PII field %q in columns.items.properties", field)
+		}
+	}
+
+	treatment, ok := props["treatment"].(map[string]interface{})
+	if !ok {
+		t.Fatal("Expected treatment to be a map")
+	}
+
+	enum, ok := treatment["enum"].([]string)
+	if !ok {
+		t.Fatal("Expected treatment to have enum")
+	}
+
+	expectedEnum := []string{"none", "masked", "tokenised", "redacted"}
+	for i, e := range expectedEnum {
+		if enum[i] != e {
+			t.Errorf("Expected enum[%d] = %q, got %q", i, e, enum[i])
+		}
 	}
 }
