@@ -292,6 +292,24 @@ func (t *ListTablesTool) EnforcerProfile(args map[string]interface{}) *framework
 	)
 }
 
+func (t *ListTablesTool) OutputSchema() *mcp.ToolOutputSchema {
+	return &mcp.ToolOutputSchema{
+		Type: "object",
+		Properties: map[string]any{
+			"tables": map[string]any{
+				"type":        "array",
+				"items":       map[string]any{"type": "string"},
+				"description": "List of table names accessible to the current user",
+			},
+			"count": map[string]any{
+				"type":        "integer",
+				"description": "Total number of tables returned",
+			},
+		},
+		Required: []string{"tables", "count"},
+	}
+}
+
 // DescribeTableTool returns detailed schema information for a table
 type DescribeTableTool struct {
 	db *DatabaseRegistry
@@ -360,6 +378,39 @@ func (t *DescribeTableTool) EnforcerProfile(args map[string]interface{}) *framew
 		framework.WithResourceCost(3),
 		framework.WithPII(true),
 	)
+}
+
+func (t *DescribeTableTool) OutputSchema() *mcp.ToolOutputSchema {
+	return &mcp.ToolOutputSchema{
+		Type: "object",
+		Properties: map[string]any{
+			"table": map[string]any{
+				"type":        "string",
+				"description": "Table name",
+			},
+			"columns": map[string]any{
+				"type": "array",
+				"items": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"name":        map[string]any{"type": "string"},
+						"data_type":   map[string]any{"type": "string"},
+						"nullable":    map[string]any{"type": "boolean"},
+						"primary_key": map[string]any{"type": "boolean"},
+						"foreign_key": map[string]any{
+							"type": []any{"object", "null"},
+							"properties": map[string]any{
+								"references_table":  map[string]any{"type": "string"},
+								"references_column": map[string]any{"type": "string"},
+							},
+						},
+					},
+					"required": []string{"name", "data_type", "nullable", "primary_key"},
+				},
+			},
+		},
+		Required: []string{"table", "columns"},
+	}
 }
 
 // SearchTablesTool searches for tables by name pattern
@@ -911,6 +962,42 @@ func (t *ExecuteReadTool) EnforcerProfile(args map[string]interface{}) *framewor
 	)
 }
 
+func (t *ExecuteReadTool) OutputSchema() *mcp.ToolOutputSchema {
+	return &mcp.ToolOutputSchema{
+		Type: "object",
+		Properties: map[string]any{
+			"rows": map[string]any{
+				"type":        "array",
+				"items":       map[string]any{"type": "object"},
+				"description": "Result rows as objects keyed by column name",
+			},
+			"row_count": map[string]any{
+				"type": "integer",
+			},
+			"columns": map[string]any{
+				"type": "array",
+				"items": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"name":         map[string]any{"type": "string"},
+						"pii_detected": map[string]any{"type": "boolean"},
+						"entity_types": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"type": "string"},
+						},
+						"treatment": map[string]any{
+							"type": "string",
+							"enum": []string{"none", "masked", "tokenised", "redacted"},
+						},
+					},
+					"required": []string{"name", "pii_detected", "treatment"},
+				},
+			},
+		},
+		Required: []string{"rows", "row_count", "columns"},
+	}
+}
+
 // ExecuteWriteTool executes DML queries
 type ExecuteWriteTool struct {
 	db     *DatabaseRegistry
@@ -1028,6 +1115,10 @@ func (t *ExecuteWriteTool) EnforcerProfile(args map[string]interface{}) *framewo
 		framework.WithPII(true),
 		framework.WithApprovalReq(false),
 	)
+}
+
+func (t *ExecuteWriteTool) OutputSchema() *mcp.ToolOutputSchema {
+	return nil
 }
 
 // ExplainQueryTool explains a query execution plan

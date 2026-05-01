@@ -30,12 +30,13 @@ func (m *MockLegacyTool) GetEnforcerProfile() *EnforcerProfile {
 // MockToolHandler is a test implementation of ToolHandler
 
 type MockToolHandler struct {
-	name        string
-	description string
-	schema      mcp.ToolInputSchema
-	result      ToolResult
-	err         error
-	profile     *EnforcerProfile
+	name         string
+	description  string
+	schema       mcp.ToolInputSchema
+	outputSchema *mcp.ToolOutputSchema
+	result       ToolResult
+	err          error
+	profile      *EnforcerProfile
 }
 
 func (m *MockToolHandler) Name() string {
@@ -62,6 +63,10 @@ func (m *MockToolHandler) EnforcerProfile(args map[string]interface{}) *Enforcer
 		return m.profile
 	}
 	return DefaultEnforcerProfile()
+}
+
+func (m *MockToolHandler) OutputSchema() *mcp.ToolOutputSchema {
+	return m.outputSchema
 }
 
 func writeTool(name string) *MockToolHandler {
@@ -1376,4 +1381,63 @@ func contains(s, sub string) bool {
 			}
 			return false
 		}())
+}
+
+func TestToolHandlerOutputSchemaInterface(t *testing.T) {
+	s := NewServer("test", "1.0.0")
+
+	outputSchema := &mcp.ToolOutputSchema{
+		Type: "object",
+		Properties: map[string]any{
+			"tables": map[string]any{
+				"type":  "array",
+				"items": map[string]any{"type": "string"},
+			},
+			"count": map[string]any{"type": "integer"},
+		},
+		Required: []string{"tables", "count"},
+	}
+
+	handler := &MockToolHandler{
+		name:         "structured-tool",
+		description:  "A tool with output schema",
+		schema:       mcp.ToolInputSchema{Type: "object"},
+		outputSchema: outputSchema,
+		result:       TextResult("ok"),
+		profile:      DefaultEnforcerProfile(),
+	}
+
+	err := s.RegisterTool(handler)
+	if err != nil {
+		t.Fatalf("Failed to register tool: %v", err)
+	}
+
+	s.Initialize()
+
+	if s.GetMCPServer() == nil {
+		t.Fatal("expected mcpServer to be set")
+	}
+}
+
+func TestToolHandlerOutputSchemaNil(t *testing.T) {
+	s := NewServer("test", "1.0.0")
+
+	handler := &MockToolHandler{
+		name:        "nil-output-schema-tool",
+		description: "A tool without output schema",
+		schema:      mcp.ToolInputSchema{Type: "object"},
+		result:      TextResult("ok"),
+		profile:     DefaultEnforcerProfile(),
+	}
+
+	err := s.RegisterTool(handler)
+	if err != nil {
+		t.Fatalf("Failed to register tool: %v", err)
+	}
+
+	s.Initialize()
+
+	if s.GetMCPServer() == nil {
+		t.Fatal("expected mcpServer to be set")
+	}
 }
