@@ -111,6 +111,10 @@ func (s *StructuredAnalyzer) ProcessRows(
 				outputRows[i][report.ColumnName] = strValue
 				continue
 			}
+			if len(report.PIIEntities) == 0 {
+				outputRows[i][report.ColumnName] = strValue
+				continue
+			}
 			anonymized, _ := s.anonymizer.AnonymiseValue(strValue, report.PIIEntities[0])
 			outputRows[i][report.ColumnName] = anonymized
 		}

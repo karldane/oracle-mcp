@@ -834,12 +834,17 @@ func (t *ExecuteReadTool) Schema() mcp.ToolInputSchema {
 		},
 		"sql": map[string]interface{}{
 			"type":        "string",
-			"description": "SELECT SQL query to execute",
+			"description": "SELECT SQL query to execute. Use named placeholders (e.g. :surname) for any values received from previous query results. Pass those values in params.",
 		},
 		"max_rows": map[string]interface{}{
 			"type":        "number",
 			"description": "Maximum rows to return (default: 100, max: 1000)",
 			"default":     100,
+		},
+		"params": map[string]interface{}{
+			"type":                 "object",
+			"description":          "Named bind parameters for the query. Any encrypted PII values returned by previous queries must be passed here, not interpolated into sql. Keys must match the placeholder names in sql (e.g. {surname: pi:...}).",
+			"additionalProperties": map[string]interface{}{"type": "string"},
 		},
 	}
 	if !t.db.IsMultiDatabase() {
@@ -876,7 +881,13 @@ func (t *ExecuteReadTool) Handle(ctx framework.CallContext, args map[string]inte
 		return framework.TextResult(""), fmt.Errorf("only SELECT queries are allowed with oracle_execute_read. Use oracle_execute_write for DML statements.")
 	}
 
-	result, err := executor.ExecuteQuery(ctx, sql, maxRows)
+	// Extract params map — may be nil for plain queries
+	var bindParams map[string]interface{}
+	if p, ok := args["params"].(map[string]interface{}); ok {
+		bindParams = p
+	}
+
+	result, err := executor.ExecuteQuery(ctx, sql, maxRows, bindParams)
 	if err != nil {
 		return framework.TextResult(""), err
 	}
@@ -926,12 +937,17 @@ func (t *ExecuteWriteTool) Schema() mcp.ToolInputSchema {
 		},
 		"sql": map[string]interface{}{
 			"type":        "string",
-			"description": "DML SQL query to execute (INSERT, UPDATE, DELETE)",
+			"description": "DML SQL query to execute (INSERT, UPDATE DELETE). Use named placeholders (e.g. :surname) for any values received from previous query results. Pass those values in params.",
 		},
 		"commit": map[string]interface{}{
 			"type":        "boolean",
 			"description": "Whether to commit the transaction (default: false for safety)",
 			"default":     false,
+		},
+		"params": map[string]interface{}{
+			"type":                 "object",
+			"description":          "Named bind parameters for the DML statement. Pass any encrypted PII values here rather than interpolating them into sql.",
+			"additionalProperties": map[string]interface{}{"type": "string"},
 		},
 	}
 	if !t.db.IsMultiDatabase() {
@@ -970,7 +986,13 @@ func (t *ExecuteWriteTool) Handle(ctx framework.CallContext, args map[string]int
 		return framework.TextResult(""), fmt.Errorf("server is in read-only mode. Set ORACLE_READ_ONLY=false to enable write operations.")
 	}
 
-	result, err := executor.ExecuteWrite(ctx, sql, commit)
+	// Extract params map — may be nil for plain queries
+	var bindParams map[string]interface{}
+	if p, ok := args["params"].(map[string]interface{}); ok {
+		bindParams = p
+	}
+
+	result, err := executor.ExecuteWrite(ctx, sql, commit, bindParams)
 	if err != nil {
 		return framework.TextResult(""), err
 	}

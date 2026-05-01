@@ -12,7 +12,7 @@ all: deps build
 .PHONY: deps
 deps:
 	@echo "Downloading dependencies..."
-	@GOPROXY=direct GOSUMDB=off go mod tidy
+	@GOPROXY=https://proxy.golang.org,direct GOSUMDB=sum.golang.org go mod tidy
 	@echo "Dependencies ready"
 
 # Build the binary

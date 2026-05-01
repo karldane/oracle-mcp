@@ -7,7 +7,11 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	siv "github.com/secure-io/siv-go"
 )
+
+var piiPrefix = "pii:"
 
 type Operator interface {
 	Name() string
@@ -48,6 +52,7 @@ func LoadOperatorConfig() *OperatorConfig {
 type RedactOperator struct{}
 
 func (o *RedactOperator) Name() string { return "redact" }
+
 func (o *RedactOperator) Anonymise(value string, start, end int, entity EntityType) string {
 	return SentinelRedactedFor(entity)
 }
@@ -55,13 +60,14 @@ func (o *RedactOperator) Anonymise(value string, start, end int, entity EntityTy
 type HashOperator struct{}
 
 func (o *HashOperator) Name() string { return "hash" }
+
 func (o *HashOperator) Anonymise(value string, start, end int, entity EntityType) string {
-	key := LoadOperatorConfig().HMACKey
+	key := []byte(os.Getenv("PRESIDIO_HMAC_KEY"))
 	if len(key) == 0 {
 		return "[hash requires HMAC key]"
 	}
 	h := hmac.New(sha256.New, key)
-	h.Write([]byte(value))
+	h.Write([]byte(value[start:end]))
 	return hex.EncodeToString(h.Sum(nil))
 }
 
@@ -70,36 +76,60 @@ type MaskOperator struct {
 }
 
 func (o *MaskOperator) Name() string { return "mask" }
+
 func (o *MaskOperator) Anonymise(value string, start, end int, entity EntityType) string {
+	segment := value[start:end]
 	if o.KeepLast <= 0 {
 		o.KeepLast = 4
 	}
-	if len(value) <= o.KeepLast {
-		return strings.Repeat("*", len(value))
+	if len(segment) <= o.KeepLast {
+		return strings.Repeat("*", len(segment))
 	}
-	return strings.Repeat("*", len(value)-o.KeepLast) + value[len(value)-o.KeepLast:]
+	return strings.Repeat("*", len(segment)-o.KeepLast) + segment[len(segment)-o.KeepLast:]
 }
 
-type PseudonymiseOperator struct{}
+type PseudonymiseOperator struct {
+	Key []byte
+}
 
 func (o *PseudonymiseOperator) Name() string { return "pseudonymise" }
+
 func (o *PseudonymiseOperator) Anonymise(value string, start, end int, entity EntityType) string {
-	key := LoadOperatorConfig().HMACKey
-	if len(key) == 0 {
-		return "[pseudonymise requires HMAC key]"
+	if end <= start {
+		return value
 	}
-	h := hmac.New(sha256.New, key)
-	h.Write([]byte(value))
-	hash := hex.EncodeToString(h.Sum(nil))
-	prefix := map[EntityType]string{
-		EntityPerson:       "PERSON",
-		EntityEmailAddress: "EMAIL",
-		EntityPhoneNumber:  "PHONE",
+	if len(o.Key) == 0 {
+		return "[pseudonymise requires key]"
 	}
-	if p, ok := prefix[entity]; ok {
-		return fmt.Sprintf("%s_%s", p, hash[:8])
+	aead, err := siv.NewCMAC(o.Key)
+	if err != nil {
+		return fmt.Sprintf("[pseudonymise error: encryption failed: %v]", err)
 	}
-	return hash[:12]
+	ciphertext := aead.Seal(nil, nil, []byte(value[start:end]), nil)
+	token := piiPrefix + hex.EncodeToString(ciphertext)
+	return value[:start] + token + value[end:]
+}
+
+func (o *PseudonymiseOperator) Decrypt(token string) (string, error) {
+	if len(o.Key) == 0 {
+		return "", fmt.Errorf("presidio: no key configured")
+	}
+	if !strings.HasPrefix(token, piiPrefix) {
+		return "", fmt.Errorf("presidio: not a PII token: %q", token)
+	}
+	ciphertext, err := hex.DecodeString(token[len(piiPrefix):])
+	if err != nil {
+		return "", fmt.Errorf("presidio: invalid token encoding: %w", err)
+	}
+	aead, err := siv.NewCMAC(o.Key)
+	if err != nil {
+		return "", fmt.Errorf("presidio: failed to init cipher: %w", err)
+	}
+	plaintext, err := aead.Open(nil, nil, ciphertext, nil)
+	if err != nil {
+		return "", fmt.Errorf("presidio: decryption failed (wrong key or tampered ciphertext)")
+	}
+	return string(plaintext), nil
 }
 
 type ReplaceOperator struct {
@@ -107,11 +137,12 @@ type ReplaceOperator struct {
 }
 
 func (o *ReplaceOperator) Name() string { return "replace" }
+
 func (o *ReplaceOperator) Anonymise(value string, start, end int, entity EntityType) string {
 	if o.Replacement == "" {
 		o.Replacement = "[REPLACED]"
 	}
-	return o.Replacement
+	return value[:start] + o.Replacement + value[end:]
 }
 
 type CustomOperator struct {
@@ -119,9 +150,10 @@ type CustomOperator struct {
 }
 
 func (o *CustomOperator) Name() string { return "custom" }
+
 func (o *CustomOperator) Anonymise(value string, start, end int, entity EntityType) string {
 	if o.Fn == nil {
 		return value
 	}
-	return o.Fn(value, entity)
+	return value[:start] + o.Fn(value[start:end], entity) + value[end:]
 }

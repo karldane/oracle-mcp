@@ -3042,7 +3042,7 @@ func TestConnection_ExecuteQuery_LimitsRows(t *testing.T) {
 		WillReturnRows(rows)
 
 	ctx := framework.Background()
-	result, err := conn.ExecuteQuery(ctx, "SELECT * FROM users", 5)
+	result, err := conn.ExecuteQuery(ctx, "SELECT * FROM users", 5, nil)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
@@ -3078,7 +3078,7 @@ func TestConnection_ExecuteWrite_WithRollback(t *testing.T) {
 	mock.ExpectRollback()
 
 	ctx := framework.Background()
-	result, err := conn.ExecuteWrite(ctx, "DELETE FROM users WHERE status = 'inactive'", false)
+	result, err := conn.ExecuteWrite(ctx, "DELETE FROM users WHERE status = 'inactive'", false, nil)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
@@ -3213,7 +3213,7 @@ func TestConnection_ExecuteQuery_WithROWNUM(t *testing.T) {
 		WillReturnRows(rows)
 
 	ctx := framework.Background()
-	result, err := conn.ExecuteQuery(ctx, "SELECT * FROM users WHERE ROWNUM <= 50", 100)
+	result, err := conn.ExecuteQuery(ctx, "SELECT * FROM users WHERE ROWNUM <= 50", 100, nil)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
@@ -3377,7 +3377,7 @@ func TestConnection_ExecuteWrite_BeginError(t *testing.T) {
 	mock.ExpectBegin().WillReturnError(fmt.Errorf("connection lost"))
 
 	ctx := framework.Background()
-	_, err = conn.ExecuteWrite(ctx, "INSERT INTO users VALUES (1)", true)
+	_, err = conn.ExecuteWrite(ctx, "INSERT INTO users VALUES (1)", true, nil)
 	if err == nil {
 		t.Error("Expected error for failed begin")
 	}
@@ -3563,7 +3563,7 @@ func TestConnection_ExecuteQuery_EmptyResult(t *testing.T) {
 		WillReturnRows(rows)
 
 	ctx := framework.Background()
-	result, err := conn.ExecuteQuery(ctx, "SELECT * FROM users", 100)
+	result, err := conn.ExecuteQuery(ctx, "SELECT * FROM users", 100, nil)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
@@ -3602,7 +3602,7 @@ func TestConnection_ExecuteWrite_ExecError(t *testing.T) {
 	mock.ExpectRollback()
 
 	ctx := framework.Background()
-	_, err = conn.ExecuteWrite(ctx, "INSERT INTO users VALUES (1)", true)
+	_, err = conn.ExecuteWrite(ctx, "INSERT INTO users VALUES (1)", true, nil)
 	if err == nil {
 		t.Error("Expected error for constraint violation")
 	}
@@ -3633,7 +3633,7 @@ func TestConnection_ExecuteWrite_CommitError(t *testing.T) {
 	mock.ExpectCommit().WillReturnError(fmt.Errorf("connection lost during commit"))
 
 	ctx := framework.Background()
-	_, err = conn.ExecuteWrite(ctx, "INSERT INTO users VALUES (1)", true)
+	_, err = conn.ExecuteWrite(ctx, "INSERT INTO users VALUES (1)", true, nil)
 	if err == nil {
 		t.Error("Expected error for commit failure")
 	}
@@ -4411,7 +4411,7 @@ func TestConnection_ExecuteQuery_WithMock(t *testing.T) {
 		WillReturnRows(rows)
 
 	ctx := framework.Background()
-	result, err := conn.ExecuteQuery(ctx, "SELECT * FROM users", 100)
+	result, err := conn.ExecuteQuery(ctx, "SELECT * FROM users", 100, nil)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
@@ -4457,7 +4457,7 @@ func TestConnection_ExecuteQuery_WithFetch(t *testing.T) {
 		WillReturnRows(rows)
 
 	ctx := framework.Background()
-	result, err := conn.ExecuteQuery(ctx, "SELECT * FROM users FETCH FIRST 10 ROWS ONLY", 100)
+	result, err := conn.ExecuteQuery(ctx, "SELECT * FROM users FETCH FIRST 10 ROWS ONLY", 100, nil)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
@@ -4492,7 +4492,7 @@ func TestConnection_ExecuteWrite_WithMock(t *testing.T) {
 	mock.ExpectCommit()
 
 	ctx := framework.Background()
-	result, err := conn.ExecuteWrite(ctx, "INSERT INTO users (name) VALUES ('test')", true)
+	result, err := conn.ExecuteWrite(ctx, "INSERT INTO users (name) VALUES ('test')", true, nil)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
@@ -4535,7 +4535,7 @@ func TestConnection_ExecuteWrite_WithoutCommit(t *testing.T) {
 	mock.ExpectRollback()
 
 	ctx := framework.Background()
-	result, err := conn.ExecuteWrite(ctx, "UPDATE users SET name = 'test' WHERE id = 1", false)
+	result, err := conn.ExecuteWrite(ctx, "UPDATE users SET name = 'test' WHERE id = 1", false, nil)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
@@ -4569,7 +4569,7 @@ func TestConnection_ExecuteWrite_ReadOnlyMode(t *testing.T) {
 	}
 
 	ctx := framework.Background()
-	_, err = conn.ExecuteWrite(ctx, "INSERT INTO users VALUES (1)", true)
+	_, err = conn.ExecuteWrite(ctx, "INSERT INTO users VALUES (1)", true, nil)
 	if err == nil {
 		t.Error("Expected error for read-only mode")
 	}
@@ -5483,7 +5483,7 @@ func TestConnection_ExecuteQuery_WithFetchFirst(t *testing.T) {
 		WillReturnRows(rows)
 
 	ctx := framework.Background()
-	result, err := conn.ExecuteQuery(ctx, "SELECT * FROM users FETCH FIRST 10 ROWS ONLY", 100)
+	result, err := conn.ExecuteQuery(ctx, "SELECT * FROM users FETCH FIRST 10 ROWS ONLY", 100, nil)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}

@@ -69,9 +69,11 @@ func BuildColumnHints(columns []ColumnInfo) map[string]framework.ColumnHint {
 	for _, col := range columns {
 		scanPolicy := framework.ScanPolicy(col.ScanPolicy)
 		entityType := ""
-		// If column is detected as PII via name heuristic, use name-only scan
-		nameMatch := isNameColumn(col.Name)
-		if nameMatch {
+
+		// NUMBER columns are inherently safe - no PII can be stored in numeric fields
+		if isNumericType(col.DataType) {
+			scanPolicy = framework.ScanPolicySafe
+		} else if isNameColumn(col.Name) {
 			scanPolicy = framework.ScanPolicyNameOnly
 			entityType = "PERSON"
 		} else if isAddressColumn(col.Name) {
@@ -81,16 +83,16 @@ func BuildColumnHints(columns []ColumnInfo) map[string]framework.ColumnHint {
 			scanPolicy = framework.ScanPolicyNameOnly
 			entityType = "DATE_OF_BIRTH"
 		} else if IsPIIColumn(col.Name) {
-			// Handle other PII columns (email, phone, etc.)
 			entityType = getEntityType(col.Name)
 		}
 		hints[col.Name] = framework.ColumnHint{
 			ScanPolicy: scanPolicy,
 			MaxLength:  col.MaxScanLength,
 			EntityType: entityType,
+			DataType:   col.DataType,
 		}
 		if col.Name == "CONT_FIRSTNAME" || col.Name == "CONT_SURNAME" || col.Name == "CONT_EMAIL" {
-			fmt.Fprintf(os.Stderr, "[DEBUG] BuildColumnHints: col=%s, scanPolicy=%d, isNameMatch=%v, entityType=%s\n", col.Name, scanPolicy, nameMatch, entityType)
+			fmt.Fprintf(os.Stderr, "[DEBUG] BuildColumnHints: col=%s, scanPolicy=%d, isNameMatch=%v, entityType=%s\n", col.Name, scanPolicy, isNameColumn(col.Name), entityType)
 		}
 	}
 	return hints

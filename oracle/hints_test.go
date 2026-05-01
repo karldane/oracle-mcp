@@ -116,3 +116,34 @@ func TestBuildHintsFromColumnNamesPolicy(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildColumnHintsIncludesDataType(t *testing.T) {
+	columns := []ColumnInfo{
+		{Name: "CONT_ID", DataType: "NUMBER", Nullable: false, ScanPolicy: 0},
+		{Name: "CONT_FIRSTNAME", DataType: "VARCHAR2(50)", Nullable: true, ScanPolicy: 0},
+		{Name: "CONT_EMAIL", DataType: "VARCHAR2(255)", Nullable: true, ScanPolicy: 0},
+		{Name: "CONT_SALARY", DataType: "NUMBER", Nullable: true, ScanPolicy: 1},
+	}
+
+	hints := BuildColumnHints(columns)
+
+	if hints["CONT_ID"].DataType != "NUMBER" {
+		t.Errorf("expected DataType 'NUMBER' for CONT_ID, got %q", hints["CONT_ID"].DataType)
+	}
+
+	if hints["CONT_FIRSTNAME"].DataType != "VARCHAR2(50)" {
+		t.Errorf("expected DataType 'VARCHAR2(50)' for CONT_FIRSTNAME, got %q", hints["CONT_FIRSTNAME"].DataType)
+	}
+
+	if hints["CONT_EMAIL"].DataType != "VARCHAR2(255)" {
+		t.Errorf("expected DataType 'VARCHAR2(255)' for CONT_EMAIL, got %q", hints["CONT_EMAIL"].DataType)
+	}
+
+	if hints["CONT_SALARY"].DataType != "NUMBER" {
+		t.Errorf("expected DataType 'NUMBER' for CONT_SALARY, got %q", hints["CONT_SALARY"].DataType)
+	}
+
+	if hints["CONT_ID"].ScanPolicy != framework.ScanPolicySafe {
+		t.Errorf("expected ScanPolicySafe for NUMBER column, got %v", hints["CONT_ID"].ScanPolicy)
+	}
+}

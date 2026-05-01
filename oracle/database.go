@@ -33,8 +33,8 @@ type QueryExecutor interface {
 	GetConstraints(ctx context.Context, tableName string) ([]ConstraintInfo, error)
 	GetIndexes(ctx context.Context, tableName string) ([]IndexInfo, error)
 	GetRelatedTables(ctx context.Context, tableName string) (*RelatedTables, error)
-	ExecuteQuery(ctx context.Context, sql string, maxRows int) (*QueryResult, error)
-	ExecuteWrite(ctx context.Context, sql string, commit bool) (*WriteResult, error)
+	ExecuteQuery(ctx context.Context, sql string, maxRows int, params map[string]interface{}) (*QueryResult, error)
+	ExecuteWrite(ctx context.Context, sql string, commit bool, params map[string]interface{}) (*WriteResult, error)
 	ExplainQuery(ctx context.Context, sql string) (*ExplainPlan, error)
 	Schema() string
 	IsReadOnly() bool
@@ -737,13 +737,20 @@ func (c *Connection) GetRelatedTables(ctx context.Context, tableName string) (*R
 }
 
 // ExecuteQuery executes a SELECT query
-func (c *Connection) ExecuteQuery(ctx context.Context, sql string, maxRows int) (*QueryResult, error) {
+func (c *Connection) ExecuteQuery(ctx context.Context, query string, maxRows int, params map[string]interface{}) (*QueryResult, error) {
 	// Add row limiting if not present
-	if !strings.Contains(strings.ToUpper(sql), "FETCH FIRST") && !strings.Contains(strings.ToUpper(sql), "ROWNUM") {
-		sql = fmt.Sprintf("SELECT * FROM (%s) WHERE ROWNUM <= %d", sql, maxRows)
+	if !strings.Contains(strings.ToUpper(query), "FETCH FIRST") && !strings.Contains(strings.ToUpper(query), "ROWNUM") {
+		query = fmt.Sprintf("SELECT * FROM (%s) WHERE ROWNUM <= %d", query, maxRows)
 	}
 
-	rows, err := c.DB.QueryContext(ctx, sql)
+	var args []interface{}
+	if params != nil && len(params) > 0 {
+		for k, v := range params {
+			args = append(args, sql.Named(k, v))
+		}
+	}
+
+	rows, err := c.DB.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -785,7 +792,7 @@ func (c *Connection) ExecuteQuery(ctx context.Context, sql string, maxRows int) 
 }
 
 // ExecuteWrite executes a DML query
-func (c *Connection) ExecuteWrite(ctx context.Context, sql string, commit bool) (*WriteResult, error) {
+func (c *Connection) ExecuteWrite(ctx context.Context, query string, commit bool, params map[string]interface{}) (*WriteResult, error) {
 	if c.ReadOnly {
 		return nil, fmt.Errorf("database is in read-only mode")
 	}
@@ -796,7 +803,14 @@ func (c *Connection) ExecuteWrite(ctx context.Context, sql string, commit bool) 
 	}
 	defer tx.Rollback()
 
-	result, err := tx.ExecContext(ctx, sql)
+	var args []interface{}
+	if params != nil && len(params) > 0 {
+		for k, v := range params {
+			args = append(args, sql.Named(k, v))
+		}
+	}
+
+	result, err := tx.ExecContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query execution failed: %w", err)
 	}

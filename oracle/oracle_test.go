@@ -1,6 +1,7 @@
 package oracle
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -232,5 +233,61 @@ func TestExplainPlanFormatting(t *testing.T) {
 
 	if !strings.Contains(output, "Suggestion 1") {
 		t.Error("Expected output to contain suggestions")
+	}
+}
+
+func TestPIIConfigWithKey(t *testing.T) {
+	os.Setenv("ORACLE_PII_HMAC_KEY", "0123456789abcdef0123456789abcdef")
+	defer os.Unsetenv("ORACLE_PII_HMAC_KEY")
+
+	cfg := buildPIIConfig()
+	if cfg == nil {
+		t.Fatal("Expected PII config to be non-nil when ORACLE_PII_HMAC_KEY is set")
+	}
+	if cfg.HMACKeyEnv != "ORACLE_PII_HMAC_KEY" {
+		t.Errorf("Expected HMACKeyEnv to be 'ORACLE_PII_HMAC_KEY', got %q", cfg.HMACKeyEnv)
+	}
+	if cfg.DefaultOperator != "redact" {
+		t.Errorf("Expected DefaultOperator to be 'redact', got %q", cfg.DefaultOperator)
+	}
+}
+
+func TestPIIConfigWithoutKey(t *testing.T) {
+	os.Unsetenv("ORACLE_PII_HMAC_KEY")
+	os.Unsetenv("PRESIDIO_HMAC_KEY")
+
+	cfg := buildPIIConfig()
+	if cfg != nil {
+		t.Error("Expected PII config to be nil when ORACLE_PII_HMAC_KEY is not set")
+	}
+}
+
+func TestPIIConfigPseudonymiseOperator(t *testing.T) {
+	os.Setenv("ORACLE_PII_HMAC_KEY", "0123456789abcdef0123456789abcdef")
+	os.Setenv("ORACLE_PII_DEFAULT_OPERATOR", "pseudonymise")
+	defer os.Unsetenv("ORACLE_PII_HMAC_KEY")
+	defer os.Unsetenv("ORACLE_PII_DEFAULT_OPERATOR")
+
+	cfg := buildPIIConfig()
+	if cfg == nil {
+		t.Fatal("Expected PII config to be non-nil")
+	}
+	if cfg.DefaultOperator != "pseudonymise" {
+		t.Errorf("Expected DefaultOperator to be 'pseudonymise', got %q", cfg.DefaultOperator)
+	}
+}
+
+func TestPIIConfigMinConfidence(t *testing.T) {
+	os.Setenv("ORACLE_PII_HMAC_KEY", "0123456789abcdef0123456789abcdef")
+	os.Setenv("ORACLE_PII_MIN_CONFIDENCE", "0.8")
+	defer os.Unsetenv("ORACLE_PII_HMAC_KEY")
+	defer os.Unsetenv("ORACLE_PII_MIN_CONFIDENCE")
+
+	cfg := buildPIIConfig()
+	if cfg == nil {
+		t.Fatal("Expected PII config to be non-nil")
+	}
+	if cfg.MinConfidence != 0.8 {
+		t.Errorf("Expected MinConfidence to be 0.8, got %f", cfg.MinConfidence)
 	}
 }
