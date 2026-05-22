@@ -162,6 +162,10 @@ func (t *ListConnectionsTool) Schema() mcp.ToolInputSchema {
 	}
 }
 
+func (t *ListConnectionsTool) OutputSchema() *mcp.ToolOutputSchema {
+	return nil
+}
+
 func (t *ListConnectionsTool) Handle(ctx framework.CallContext, args map[string]interface{}) (framework.ToolResult, error) {
 	connections := t.db.ListConnections()
 
@@ -456,6 +460,10 @@ func (t *SearchTablesTool) Schema() mcp.ToolInputSchema {
 	}
 }
 
+func (t *SearchTablesTool) OutputSchema() *mcp.ToolOutputSchema {
+	return nil
+}
+
 func (t *SearchTablesTool) Handle(ctx framework.CallContext, args map[string]interface{}) (framework.ToolResult, error) {
 	executor, err := t.db.RequireConnection(getDatabaseParam(args, t.db.IsMultiDatabase()))
 	if err != nil {
@@ -540,6 +548,10 @@ func (t *SearchColumnsTool) Schema() mcp.ToolInputSchema {
 		Properties: props,
 		Required:   []string{"search_term"},
 	}
+}
+
+func (t *SearchColumnsTool) OutputSchema() *mcp.ToolOutputSchema {
+	return nil
 }
 
 func (t *SearchColumnsTool) Handle(ctx framework.CallContext, args map[string]interface{}) (framework.ToolResult, error) {
@@ -637,6 +649,10 @@ func (t *GetConstraintsTool) Schema() mcp.ToolInputSchema {
 	}
 }
 
+func (t *GetConstraintsTool) OutputSchema() *mcp.ToolOutputSchema {
+	return nil
+}
+
 func (t *GetConstraintsTool) Handle(ctx framework.CallContext, args map[string]interface{}) (framework.ToolResult, error) {
 	executor, err := t.db.RequireConnection(getDatabaseParam(args, t.db.IsMultiDatabase()))
 	if err != nil {
@@ -724,6 +740,10 @@ func (t *GetIndexesTool) Schema() mcp.ToolInputSchema {
 	}
 }
 
+func (t *GetIndexesTool) OutputSchema() *mcp.ToolOutputSchema {
+	return nil
+}
+
 func (t *GetIndexesTool) Handle(ctx framework.CallContext, args map[string]interface{}) (framework.ToolResult, error) {
 	executor, err := t.db.RequireConnection(getDatabaseParam(args, t.db.IsMultiDatabase()))
 	if err != nil {
@@ -808,6 +828,10 @@ func (t *GetRelatedTablesTool) Schema() mcp.ToolInputSchema {
 		Properties: props,
 		Required:   []string{"table_name"},
 	}
+}
+
+func (t *GetRelatedTablesTool) OutputSchema() *mcp.ToolOutputSchema {
+	return nil
 }
 
 func (t *GetRelatedTablesTool) Handle(ctx framework.CallContext, args map[string]interface{}) (framework.ToolResult, error) {
@@ -1157,6 +1181,10 @@ func (t *ExplainQueryTool) Schema() mcp.ToolInputSchema {
 		Properties: props,
 		Required:   []string{"sql"},
 	}
+}
+
+func (t *ExplainQueryTool) OutputSchema() *mcp.ToolOutputSchema {
+	return nil
 }
 
 func (t *ExplainQueryTool) Handle(ctx framework.CallContext, args map[string]interface{}) (framework.ToolResult, error) {
