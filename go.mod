@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
-	github.com/karldane/mcp-framework v0.2.6
+	github.com/karldane/mcp-framework v0.2.9
 	github.com/mark3labs/mcp-go v0.46.0
 	github.com/sijms/go-ora/v2 v2.9.0
 )
