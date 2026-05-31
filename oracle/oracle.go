@@ -1118,26 +1118,13 @@ func (t *ExecuteWriteTool) Handle(ctx framework.CallContext, args map[string]int
 }
 
 func (t *ExecuteWriteTool) EnforcerProfile(args map[string]interface{}) *framework.EnforcerProfile {
-	commit := false
-	if args != nil {
-		commit, _ = args["commit"].(bool)
-	}
-	if commit {
-		return framework.NewEnforcerProfile(
-			framework.WithRisk(framework.RiskHigh),
-			framework.WithImpact(framework.ImpactWrite),
-			framework.WithResourceCost(8),
-			framework.WithPII(true),
-			framework.WithApprovalReq(true),
-		)
-	}
-	// Dry-run / rollback-only mode
+	// Always return worst-case profile (committed write) as per framework contract
 	return framework.NewEnforcerProfile(
-		framework.WithRisk(framework.RiskMed),
-		framework.WithImpact(framework.ImpactRead),
+		framework.WithRisk(framework.RiskHigh),
+		framework.WithImpact(framework.ImpactWrite),
 		framework.WithResourceCost(8),
 		framework.WithPII(true),
-		framework.WithApprovalReq(false),
+		framework.WithApprovalReq(true),
 	)
 }
 

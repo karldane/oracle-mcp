@@ -52,9 +52,9 @@ func TestToolDefinitions(t *testing.T) {
 		{
 			name:             "ExecuteWriteTool",
 			tool:             &ExecuteWriteTool{},
-			expectedRisk:     framework.RiskMed,
-			expectedImpact:   framework.ImpactRead,
-			expectedApproval: false,
+			expectedRisk:     framework.RiskHigh,
+			expectedImpact:   framework.ImpactWrite,
+			expectedApproval: true,
 		},
 	}
 

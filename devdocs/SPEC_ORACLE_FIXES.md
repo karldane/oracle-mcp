@@ -342,14 +342,42 @@ split representation.
 
 ---
 
-## Compatibility matrix
+## Fix 4 — Fix `ExecuteWriteTool` self-reporting profile
+
+### Problem
+
+The `execute_write` tool self-reports an incorrect profile during discovery because its `EnforcerProfile` implementation returns the best-case (dry-run) profile when called with `nil` arguments. This causes the enforcer to see it as a low-risk read operation instead of a high-risk write operation requiring HITL approval.
+
+### Root cause
+
+The `EnforcerProfile(args)` implementation in `oracle/oracle.go` violates the framework's contract by defaulting to the non-committed path when `args` is `nil`.
+
+### Required change
+
+The `EnforcerProfile` method must return the worst-case (committed write) profile when `args` is `nil`, ensuring the enforcer captures the true risk during scanning.
+
+### Implementation
+
+Collapse the `EnforcerProfile` logic to return the High/Write/HITL profile statically:
+
+```go
+func (t *ExecuteWriteTool) EnforcerProfile(args map[string]interface{}) *framework.EnforcerProfile {
+	// Always return worst-case profile (committed write) as per framework contract
+	return framework.NewEnforcerProfile(
+		framework.WithRisk(framework.RiskHigh),
+		framework.WithImpact(framework.ImpactWrite),
+		framework.WithResourceCost(8),
+		framework.WithPII(true),
+		framework.WithApprovalReq(true),
+	)
+}
+```
+
+### Compatibility matrix
 
 | Change | `content` field | `structuredContent` field | opencode impact |
 |--------|----------------|--------------------------|-----------------|
-| Fix 1 (expand summaries) | Not applicable | Not applicable | None — expand handler only |
-| Fix 2a (`list_tables`) | Serialised JSON string added | New | None — additive |
-| Fix 2b (`describe_table`) | Serialised JSON string added | New | None — additive |
-| Fix 3 (`execute_read`) | Consolidated to 1 item | Extended with `columns` | Low — clients using `structuredContent` gain PII data; clients reading `content[0]` get richer JSON |
+| Fix 4 (write profile) | Not applicable | Not applicable | Improved security: writes now correctly require HITL approval in the bridge |
 
 ---
 
