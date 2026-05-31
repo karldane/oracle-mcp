@@ -1,0 +1,182 @@
+# Debugging Oracle MCP Server
+
+This document explains how to run and debug the Oracle MCP server in stdio mode for troubleshooting.
+
+## Prerequisites
+
+- Oracle MCP server binary (`oracle-mcp`) built and available in the current directory
+- Access to an Oracle database
+- Basic understanding of the Model Context Protocol (MCP) over stdio
+
+## Environment Variables
+
+The server requires the following environment variables:
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `ORACLE_CONNECTION_STRING` | Oracle connection string in format `oracle://user:password@host:port/service_name` | `oracle://tusker:GlacI3r_is_FrOZ3N@tus-devdb-17.internal.tuskerdirect.com:1521/TSKDEV` |
+| `ORACLE_PII_HMAC_KEY` | (Optional) HMAC key for PII pipeline | `test1234` |
+| `ORACLE_READ_ONLY` | (Optional) Set to `false` to enable write operations | `false` |
+| `CACHE_DIR` | (Optional) Directory for schema cache | `.cache` (default) |
+
+## Running the Server in Debug Mode
+
+Start the server with your environment variables. The server will initialize and wait for MCP messages on stdin:
+
+```bash
+ORACLE_PII_HMAC_KEY='test1234' ORACLE_CONNECTION_STRING="oracle://tusker:GlacI3r_is_FrOZ3N@tus-devdb-17.internal.tuskerdirect.com:1521/TSKDEV" ./oracle-mcp
+```
+
+You should see startup logs similar to:
+
+```
+[DEBUG] Searching for ORACLE_CONNECTION_STRING env vars...
+[DEBUG] Found ORACLE_CONNECTION_STRING: oracle://tusker:GlacI3r_is_FrOZ3N@tus-devdb-17.internal.tuskerdirect.com:1521/TSKDEV
+[DEBUG] PII pipeline enabled with HMACKeyEnv: ORACLE_PII_HMAC_KEY
+[DEBUG] Oracle server config: PIIScanEnabled=true, PIIConfig=&{HMACKeyEnv:ORACLE_PII_HMAC_KEY MinConfidence:0 DefaultOperator: EntityOperators:map[] SampleSize:0}
+Oracle MCP Server started in disconnected mode (no database connections)
+Note: Configure ORACLE_CONNECTION_STRING for single connection operation or - 
+ORACLE_CONNECTION_STRING_* environment variables for multiple named database connections
+All tools are registered and available for self-reporting.
+Read-only mode: enabled
+Write tools: disabled (use -write-enabled to enable)
+Registered tools: [oracle_connections oracle_list_tables oracle_search_tables oracle_get_indexes oracle_execute_read oracle_execute_write oracle_describe_table oracle_search_columns oracle_get_constraints oracle_get_related_tables oracle_explain_query]
+Ready to serve requests via stdio...
+```
+
+## Sending MCP Messages
+
+Once the server is running, you can send MCP JSON-RPC messages via stdin. Here are examples using `echo` and pipes:
+
+### 1. Initialize Connection
+
+```bash
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test-client","version":"1.0.0"}}}' | ORACLE_PII_HMAC_KEY='test1234' ORACLE_CONNECTION_STRING="oracle://tusker:GlacI3r_is_FrOZ3N@tus-devdb-17.internal.tuskerdirect.com:1521/TSKDEV" ./oracle-mcp
+```
+
+Expected response:
+```json
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05","capabilities":{"tools":{"listChanged":true}},"serverInfo":{"name":"oracle-mcp","version":"2.0.0"},"instructions":"Oracle MCP Server with multi-database support. Use oracle_connections to check connection status."}}
+```
+
+### 2. List Available Tools
+
+```bash
+echo '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' | ORACLE_PII_HMAC_KEY='test1234' ORACLE_CONNECTION_STRING="oracle://tusker:GlacI3r_is_FrOZ3N@tus-devdb-17.internal.tuskerdirect.com:1521/TSKDEV" ./oracle-mcp
+```
+
+This returns a list of all available tools with their metadata.
+
+### 3. Check Connection Status
+
+```bash
+echo '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"oracle_connections","arguments":{}}}' | ORACLE_PII_HMAC_KEY='test1234' ORACLE_CONNECTION_STRING="oracle://tusker:GlacI3r_is_FrOZ3N@tus-devdb-17.internal.tuskerdirect.com:1521/TSKDEV" ./oracle-mcp
+```
+
+Expected response (shows connection status):
+```json
+{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"Database Connection Status:\n\n| Database | Schema | Status |\n|----------|--------|--------|\n| (default) | ORACLE: | available |\n"}]}}
+```
+
+Note: Initially shows "available" status. After a tool that requires DB access, it will show "connected".
+
+### 4. List Tables (Triggers DB Connection)
+
+```bash
+echo '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"oracle_list_tables","arguments":{"limit":5}}}' | ORACLE_PII_HMAC_KEY='test1234' ORACLE_CONNECTION_STRING="oracle://tusker:GlacI3r_is_FrOZ3N@tus-devdb-17.internal.tuskerdirect.com:1521/TSKDEV" ./oracle-mcp
+```
+
+This will:
+1. Establish a database connection (you'll see connection debug logs)
+2. Initialize schema cache
+3. Return the first 5 tables
+
+Example response:
+```json
+{"jsonrpc":"2.0","id":4,"result":{"content":[{"type":"text","text":"Found 5 tables in TUSKER:\n\n- ACCOUNT_RECOVERY\n- ACCOUNT_RECOVERY_QUESTIONS\n- ACCOUNT_VERIFICATION\n- ADDITIONAL_DRIVERS\n- ADDRESSES\n"}]}}
+```
+
+### 5. Execute a Simple Query
+
+```bash
+echo '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"oracle_execute_read","arguments":{"database":"_default","sql":"SELECT 1 FROM DUAL"}}}' | ORACLE_PII_HMAC_KEY='test1234' ORACLE_CONNECTION_STRING="oracle://tusker:GlacI3r_is_FrOZ3N@tus-devdb-17.internal.tuskerdirect.com:1521/TSKDEV" ./oracle-mcp
+```
+
+Expected response:
+```json
+{"jsonrpc":"2.0","id":5,"result":{"content":[{"type":"text","text":"[map[1:1]]"}]}}
+```
+
+## Debugging Tips
+
+### Connection Issues
+
+If you see errors like:
+- `failed to open database`
+- `failed to connect: ORA-12541: TNS:no listener`
+- `failed to get schema: ORA-01017: invalid username/password; logon denied`
+
+Check:
+1. Connection string format: `oracle://user:password@host:port/service_name`
+2. Network connectivity to the Oracle host:port
+3. Username/password correctness
+4. Oracle service name availability
+
+### No Response / Empty Response
+
+If you get no response or an empty response:
+1. Ensure you're sending valid JSON-RPC 2.0 messages
+2. Verify the server is actually running and waiting on stdin
+3. Check if the server crashed (look for panic logs in stderr)
+4. Remember that the server only implements stdio transport - HTTP requires an MCP bridge
+
+### Enabling More Debug Logging
+
+The server already outputs debug logs to stderr. To see more:
+- Look for `[DEBUG]` prefixes in the output
+- The connection process shows detailed steps: `Opening DB`, `Testing connection`, `Getting schema from DUAL`
+
+### PII Pipeline Debugging
+
+When `ORACLE_PII_HMAC_KEY` is set, you'll see:
+- `[DEBUG] PII pipeline enabled with HMACKeyEnv: ORACLE_PII_HMAC_KEY`
+- `[DEBUG] Oracle server config: PIIScanEnabled=true, PIIConfig=...`
+
+## Common Commands for Debugging
+
+### Quick Test One-Liner
+
+```bash
+ORACLE_PII_HMAC_KEY='test1234' ORACLE_CONNECTION_STRING="oracle://tusker:GlacI3r_is_FrOZ3N@tus-devdb-17.internal.tuskerdirect.com:1521/TSKDEV" ./oracle-mcp <<< '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test-client","version":"1.0.0"}}}'
+```
+
+### Interactive Mode
+
+For manual testing, you can run the server and then type/paste JSON messages directly:
+
+```bash
+ORACLE_PII_HMAC_KEY='test1234' ORACLE_PII_DEFAULT_OPERATOR='hash' ORACLE_CONNECTION_STRING="oracle://tusker:GlacI3r_is_FrOZ3N@tus-devdb-17.internal.tuskerdirect.com:1521/TSKDEV" ./oracle-mcp
+# Then paste JSON messages and press Enter
+```
+
+## Notes
+
+1. The server runs in read-only mode by default. To enable write operations:
+   - Set `ORACLE_READ_ONLY=false`
+   - Add `-write-enabled` flag when starting the server
+
+2. All tools require a `database` parameter when multiple connections are configured. For single connection (using `ORACLE_CONNECTION_STRING`), use `_default` or omit the parameter (defaults to `_default`).
+
+3. The server shows "disconnected mode" initially until a tool requiring database access is called.
+
+4. Write tools (`oracle_execute_write`) are disabled unless both:
+   - `ORACLE_READ_ONLY=false` is set
+   - `-write-enabled` flag is provided
+
+5. For troubleshooting HTTP/Streamable HTTP issues, note that this oracle-mcp binary only implements stdio transport. HTTP support requires an MCP bridge that properly translates between HTTP and stdio while maintaining MCP semantics (including Content-Length headers).
+
+
+###
+
+echo '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"oracle_execute_read","arguments":{"database":"_default","sql":"SELECT 1 FROM DUAL"}}}' | ORACLE_PII_HMAC_KEY='test1234' ORACLE_CONNECTION_STRING="oracle://tusker:GlacI3r_is_FrOZ3N@tus-devdb-17.internal.tuskerdirect.com:1521/TSKDEV" ./oracle-mcp 2>/dev/null
+{"jsonrpc":"2.0","id":5,"result":{"content":[{"type":"text","text":"[map[1:1]]"}]}}

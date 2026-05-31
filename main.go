@@ -9,9 +9,21 @@ import (
 )
 
 func main() {
-	// Define command-line flags
-	writeEnabled := flag.Bool("write-enabled", false, "Enable write tools (disabled by default for safety)")
-	flag.Parse()
+	// Check for --scan flag BEFORE flag.Parse() to avoid "flag not defined" error
+	scanMode := false
+	for _, arg := range os.Args[1:] {
+		if arg == "--scan" || arg == "--scan-mode" {
+			scanMode = true
+			break
+		}
+	}
+
+	// Only parse flags if not in scan mode
+	var writeEnabled *bool
+	if !scanMode {
+		writeEnabled = flag.Bool("write-enabled", false, "Enable write tools (disabled by default for safety)")
+		flag.Parse()
+	}
 
 	// Check read-only mode
 	readOnly := true
@@ -26,6 +38,15 @@ func main() {
 		os.Exit(1)
 	}
 	defer server.Close()
+
+	// Handle --scan flag for mcp-bridge startup scanning
+	if scanMode {
+		server.Server.SetScanMode(true)
+		if err := server.Server.RunScanMode(); err != nil {
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
 
 	// Initialize schema cache for all connected databases
 	connections := server.ListConnections()
