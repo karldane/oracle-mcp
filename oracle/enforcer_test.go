@@ -403,7 +403,6 @@ func TestWriteEnabledWithReadOnlyFalse(t *testing.T) {
 
 	// Create server with read-only disabled
 	server := createTestServer(mockDB, false)
-	server.SetWriteEnabled(true)
 
 	if err := server.Initialize(); err != nil {
 		t.Fatalf("Failed to initialize: %v", err)
@@ -412,6 +411,66 @@ func TestWriteEnabledWithReadOnlyFalse(t *testing.T) {
 	// Verify server is not in read-only mode
 	if server.IsReadOnly() {
 		t.Error("Server should not be in read-only mode")
+	}
+
+	// Verify framework write gate is open (no manual SetWriteEnabled call needed)
+	if !server.IsWriteEnabled() {
+		t.Error("Server should have write enabled when readOnly=false")
+	}
+}
+
+func TestFrameworkWriteGateBlockedWhenReadOnly(t *testing.T) {
+	mockDB := newMockOracleDB()
+	defer mockDB.Close()
+
+	// Create server in read-only mode
+	server := createTestServer(mockDB, true)
+
+	if err := server.Initialize(); err != nil {
+		t.Fatalf("Failed to initialize: %v", err)
+	}
+
+	// Verify server is in read-only mode
+	if !server.IsReadOnly() {
+		t.Error("Server should be in read-only mode")
+	}
+
+	// Verify framework write gate is closed
+	if server.IsWriteEnabled() {
+		t.Error("Server should NOT have write enabled when readOnly=true")
+	}
+}
+
+func TestExecuteWriteBlockedByFrameworkWhenReadOnly(t *testing.T) {
+	mockDB := newMockOracleDB()
+	defer mockDB.Close()
+
+	// Create server in read-only mode
+	server := createTestServer(mockDB, true)
+	server.registerTools()
+
+	// Execute write tool should be blocked by framework write gate
+	_, err := server.ExecuteTool(context.Background(), "execute_write", map[string]interface{}{"database": "_default", "sql": "SELECT 1 FROM dual"})
+	if err == nil {
+		t.Error("Expected error when executing write tool in readonly mode")
+	} else if !strings.Contains(err.Error(), "readonly mode") {
+		t.Errorf("Expected readonly mode error, got: %v", err)
+	}
+}
+
+func TestExecuteWriteAllowedByFrameworkWhenNotReadOnly(t *testing.T) {
+	mockDB := newMockOracleDB()
+	defer mockDB.Close()
+
+	// Create server with read-only disabled
+	server := createTestServer(mockDB, false)
+	server.registerTools()
+
+	// Execute write tool should pass the framework write gate
+	// (It may fail later with a different error e.g. missing DB, but not readonly)
+	_, err := server.ExecuteTool(context.Background(), "execute_write", map[string]interface{}{"database": "_default", "sql": "SELECT 1 FROM dual"})
+	if err != nil && strings.Contains(err.Error(), "readonly mode") {
+		t.Errorf("Write tool should not be blocked by framework readonly gate when readOnly=false: %v", err)
 	}
 }
 
@@ -475,6 +534,7 @@ func createTestServerWithRegistry(tables []string, relationships map[string][]Re
 		Name:         "oracle-mcp-test",
 		Version:      "1.0.0",
 		Instructions: "Test Oracle MCP Server",
+		WriteEnabled: !readOnly,
 	}
 
 	s := &Server{

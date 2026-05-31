@@ -42,6 +42,7 @@ func NewServer(readOnly bool) (*Server, error) {
 		Name:           "oracle-mcp",
 		Version:        "2.0.0",
 		Instructions:   instructions,
+		WriteEnabled:   !readOnly,
 		PIIScanEnabled: piiEnabled,
 		PIIConfig:      piiConfig,
 	}
