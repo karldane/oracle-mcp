@@ -87,14 +87,14 @@ export ORACLE_READ_ONLY=false
 
 ## Tool Usage and Examples
 
-### `oracle_execute_read`
+### `execute_read`
 
 Executes a `SELECT` query.
 
 **Example: Simple Query**
 ```json
 {
-  "tool": "oracle_execute_read",
+  "tool": "execute_read",
   "params": {
     "sql": "SELECT * FROM EMPLOYEES WHERE ROWNUM <= 5"
   }
@@ -107,7 +107,7 @@ To prevent SQL injection and safely handle PII tokens, use named bind parameters
 
 ```json
 {
-  "tool": "oracle_execute_read",
+  "tool": "execute_read",
   "params": {
     "sql": "SELECT * FROM EMPLOYEES WHERE LAST_NAME = :surname AND DEPARTMENT_ID = :dept",
     "params": {
@@ -127,7 +127,7 @@ This demonstrates querying data, receiving an encrypted PII token, and using tha
 *Request:*
 ```json
 {
-  "tool": "oracle_execute_read",
+  "tool": "execute_read",
   "params": {
     "sql": "SELECT CONT_ID, CONT_EMAIL FROM CONTACTS WHERE CONT_ID = 1006"
   }
@@ -154,7 +154,7 @@ Pass the token from the previous step into the `params` map. The server will dec
 *Request:*
 ```json
 {
-  "tool": "oracle_execute_read",
+  "tool": "execute_read",
   "params": {
     "sql": "SELECT CONT_ID, CONT_EMAIL FROM CONTACTS WHERE CONT_EMAIL = :email_addr",
     "params": {

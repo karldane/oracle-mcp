@@ -34,17 +34,17 @@ The original PII detection heuristics only matched bare column names (e.g., `^FI
 ### 4. Query Tool Updates (`oracle/oracle.go`)
 - **WithPII(true) Declaration**: Updated all 12 Oracle query tools to declare `WithPII(true)` in their EnforcerProfile
 - **Tools Modified**:
-  - oracle_connections
-  - oracle_describe_table
-  - oracle_execute_read
-  - oracle_execute_write
-  - oracle_explain_query
-  - oracle_get_constraints
-  - oracle_get_indexes
-  - oracle_get_related_tables
-  - oracle_list_tables
-  - oracle_search_columns
-  - oracle_search_tables
+  - connections
+  - describe_table
+  - execute_read
+  - execute_write
+  - explain_query
+  - get_constraints
+  - get_indexes
+  - get_related_tables
+  - list_tables
+  - search_columns
+  - search_tables
   - Additional tool definitions
 - **Rationale**: Any SELECT query may return person data via JOINs, so all query tools must indicate potential PII exposure
 
