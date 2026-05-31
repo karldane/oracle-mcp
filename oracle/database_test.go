@@ -679,17 +679,17 @@ func TestToolSchemas_DatabaseParameter(t *testing.T) {
 		toolName         string
 		hasDatabaseParam bool
 	}{
-		{"ListConnectionsTool", "oracle_connections", false},
-		{"ListTablesTool", "oracle_list_tables", true},
-		{"DescribeTableTool", "oracle_describe_table", true},
-		{"SearchTablesTool", "oracle_search_tables", true},
-		{"SearchColumnsTool", "oracle_search_columns", true},
-		{"GetConstraintsTool", "oracle_get_constraints", true},
-		{"GetIndexesTool", "oracle_get_indexes", true},
-		{"GetRelatedTablesTool", "oracle_get_related_tables", true},
-		{"ExplainQueryTool", "oracle_explain_query", true},
-		{"ExecuteReadTool", "oracle_execute_read", true},
-		{"ExecuteWriteTool", "oracle_execute_write", true},
+		{"ListConnectionsTool", "connections", false},
+		{"ListTablesTool", "list_tables", true},
+		{"DescribeTableTool", "describe_table", true},
+		{"SearchTablesTool", "search_tables", true},
+		{"SearchColumnsTool", "search_columns", true},
+		{"GetConstraintsTool", "get_constraints", true},
+		{"GetIndexesTool", "get_indexes", true},
+		{"GetRelatedTablesTool", "get_related_tables", true},
+		{"ExplainQueryTool", "explain_query", true},
+		{"ExecuteReadTool", "execute_read", true},
+		{"ExecuteWriteTool", "execute_write", true},
 	}
 
 	for _, tt := range tests {
@@ -698,17 +698,17 @@ func TestToolSchemas_DatabaseParameter(t *testing.T) {
 			// We verify this by checking the tool exists and has proper schema
 			found := false
 			for _, expectedName := range []string{
-				"oracle_connections",
-				"oracle_list_tables",
-				"oracle_describe_table",
-				"oracle_search_tables",
-				"oracle_search_columns",
-				"oracle_get_constraints",
-				"oracle_get_indexes",
-				"oracle_get_related_tables",
-				"oracle_explain_query",
-				"oracle_execute_read",
-				"oracle_execute_write",
+				"connections",
+				"list_tables",
+				"describe_table",
+				"search_tables",
+				"search_columns",
+				"get_constraints",
+				"get_indexes",
+				"get_related_tables",
+				"explain_query",
+				"execute_read",
+				"execute_write",
 			} {
 				if tt.toolName == expectedName {
 					found = true
@@ -2672,17 +2672,17 @@ func TestNewDatabaseRegistry_LabelNormalization(t *testing.T) {
 
 func TestToolNames(t *testing.T) {
 	expectedTools := map[string]bool{
-		"oracle_connections":        false,
-		"oracle_list_tables":        false,
-		"oracle_describe_table":     false,
-		"oracle_search_tables":      false,
-		"oracle_search_columns":     false,
-		"oracle_get_constraints":    false,
-		"oracle_get_indexes":        false,
-		"oracle_get_related_tables": false,
-		"oracle_explain_query":      false,
-		"oracle_execute_read":       false,
-		"oracle_execute_write":      false,
+		"connections":        false,
+		"list_tables":        false,
+		"describe_table":     false,
+		"search_tables":      false,
+		"search_columns":     false,
+		"get_constraints":    false,
+		"get_indexes":        false,
+		"get_related_tables": false,
+		"explain_query":      false,
+		"execute_read":       false,
+		"execute_write":      false,
 	}
 
 	registry := &DatabaseRegistry{connections: make(map[string]*Connection)}
@@ -4893,8 +4893,8 @@ func TestListTablesTool_WithMock(t *testing.T) {
 	}
 	tool := &ListTablesTool{db: registry}
 
-	if tool.Name() != "oracle_list_tables" {
-		t.Errorf("Expected name oracle_list_tables, got %s", tool.Name())
+	if tool.Name() != "list_tables" {
+		t.Errorf("Expected name list_tables, got %s", tool.Name())
 	}
 
 	schema := tool.Schema()
@@ -4911,8 +4911,8 @@ func TestSearchTablesTool_WithMock(t *testing.T) {
 	}
 	tool := &SearchTablesTool{db: registry}
 
-	if tool.Name() != "oracle_search_tables" {
-		t.Errorf("Expected name oracle_search_tables, got %s", tool.Name())
+	if tool.Name() != "search_tables" {
+		t.Errorf("Expected name search_tables, got %s", tool.Name())
 	}
 }
 
@@ -4924,8 +4924,8 @@ func TestExecuteReadTool_WithMock(t *testing.T) {
 	}
 	tool := &ExecuteReadTool{db: registry}
 
-	if tool.Name() != "oracle_execute_read" {
-		t.Errorf("Expected name oracle_execute_read, got %s", tool.Name())
+	if tool.Name() != "execute_read" {
+		t.Errorf("Expected name execute_read, got %s", tool.Name())
 	}
 
 	profile := tool.EnforcerProfile(nil)
@@ -4943,8 +4943,8 @@ func TestExecuteWriteTool_WithMock(t *testing.T) {
 	server := &Server{readOnly: false}
 	tool := &ExecuteWriteTool{db: registry, server: server}
 
-	if tool.Name() != "oracle_execute_write" {
-		t.Errorf("Expected name oracle_execute_write, got %s", tool.Name())
+	if tool.Name() != "execute_write" {
+		t.Errorf("Expected name execute_write, got %s", tool.Name())
 	}
 
 	profile := tool.EnforcerProfile(map[string]interface{}{"commit": true})

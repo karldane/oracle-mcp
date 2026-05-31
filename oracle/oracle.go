@@ -28,10 +28,10 @@ func NewServer(readOnly bool) (*Server, error) {
 	instructions := "Oracle MCP Server with multi-database support. "
 	if multiDB {
 		instructions += "Multiple database connections are configured. "
-		instructions += "Use oracle_connections to see available databases. "
+		instructions += "Use connections to see available databases. "
 		instructions += "All tools require a 'database' parameter."
 	} else {
-		instructions += "Use oracle_connections to check connection status."
+		instructions += "Use connections to check connection status."
 	}
 
 	// Configure PII pipeline if HMAC key is provided via env
@@ -144,7 +144,7 @@ type ListConnectionsTool struct {
 }
 
 func (t *ListConnectionsTool) Name() string {
-	return "oracle_connections"
+	return "connections"
 }
 
 func (t *ListConnectionsTool) Description() string {
@@ -226,7 +226,7 @@ type ListTablesTool struct {
 }
 
 func (t *ListTablesTool) Name() string {
-	return "oracle_list_tables"
+	return "list_tables"
 }
 
 func (t *ListTablesTool) Description() string {
@@ -241,7 +241,7 @@ func (t *ListTablesTool) Schema() mcp.ToolInputSchema {
 	props := map[string]interface{}{
 		"database": map[string]interface{}{
 			"type":        "string",
-			"description": "Database connection label (required). Use oracle_connections to see available databases.",
+			"description": "Database connection label (required). Use connections to see available databases.",
 		},
 		"limit": map[string]interface{}{
 			"type":        "number",
@@ -320,7 +320,7 @@ type DescribeTableTool struct {
 }
 
 func (t *DescribeTableTool) Name() string {
-	return "oracle_describe_table"
+	return "describe_table"
 }
 
 func (t *DescribeTableTool) Description() string {
@@ -335,7 +335,7 @@ func (t *DescribeTableTool) Schema() mcp.ToolInputSchema {
 	props := map[string]interface{}{
 		"database": map[string]interface{}{
 			"type":        "string",
-			"description": "Database connection label (required). Use oracle_connections to see available databases.",
+			"description": "Database connection label (required). Use connections to see available databases.",
 		},
 		"table_name": map[string]interface{}{
 			"type":        "string",
@@ -423,7 +423,7 @@ type SearchTablesTool struct {
 }
 
 func (t *SearchTablesTool) Name() string {
-	return "oracle_search_tables"
+	return "search_tables"
 }
 
 func (t *SearchTablesTool) Description() string {
@@ -438,7 +438,7 @@ func (t *SearchTablesTool) Schema() mcp.ToolInputSchema {
 	props := map[string]interface{}{
 		"database": map[string]interface{}{
 			"type":        "string",
-			"description": "Database connection label (required). Use oracle_connections to see available databases.",
+			"description": "Database connection label (required). Use connections to see available databases.",
 		},
 		"search_term": map[string]interface{}{
 			"type":        "string",
@@ -513,7 +513,7 @@ type SearchColumnsTool struct {
 }
 
 func (t *SearchColumnsTool) Name() string {
-	return "oracle_search_columns"
+	return "search_columns"
 }
 
 func (t *SearchColumnsTool) Description() string {
@@ -528,7 +528,7 @@ func (t *SearchColumnsTool) Schema() mcp.ToolInputSchema {
 	props := map[string]interface{}{
 		"database": map[string]interface{}{
 			"type":        "string",
-			"description": "Database connection label (required). Use oracle_connections to see available databases.",
+			"description": "Database connection label (required). Use connections to see available databases.",
 		},
 		"search_term": map[string]interface{}{
 			"type":        "string",
@@ -617,7 +617,7 @@ type GetConstraintsTool struct {
 }
 
 func (t *GetConstraintsTool) Name() string {
-	return "oracle_get_constraints"
+	return "get_constraints"
 }
 
 func (t *GetConstraintsTool) Description() string {
@@ -632,7 +632,7 @@ func (t *GetConstraintsTool) Schema() mcp.ToolInputSchema {
 	props := map[string]interface{}{
 		"database": map[string]interface{}{
 			"type":        "string",
-			"description": "Database connection label (required). Use oracle_connections to see available databases.",
+			"description": "Database connection label (required). Use connections to see available databases.",
 		},
 		"table_name": map[string]interface{}{
 			"type":        "string",
@@ -708,7 +708,7 @@ type GetIndexesTool struct {
 }
 
 func (t *GetIndexesTool) Name() string {
-	return "oracle_get_indexes"
+	return "get_indexes"
 }
 
 func (t *GetIndexesTool) Description() string {
@@ -723,7 +723,7 @@ func (t *GetIndexesTool) Schema() mcp.ToolInputSchema {
 	props := map[string]interface{}{
 		"database": map[string]interface{}{
 			"type":        "string",
-			"description": "Database connection label (required). Use oracle_connections to see available databases.",
+			"description": "Database connection label (required). Use connections to see available databases.",
 		},
 		"table_name": map[string]interface{}{
 			"type":        "string",
@@ -798,7 +798,7 @@ type GetRelatedTablesTool struct {
 }
 
 func (t *GetRelatedTablesTool) Name() string {
-	return "oracle_get_related_tables"
+	return "get_related_tables"
 }
 
 func (t *GetRelatedTablesTool) Description() string {
@@ -813,7 +813,7 @@ func (t *GetRelatedTablesTool) Schema() mcp.ToolInputSchema {
 	props := map[string]interface{}{
 		"database": map[string]interface{}{
 			"type":        "string",
-			"description": "Database connection label (required). Use oracle_connections to see available databases.",
+			"description": "Database connection label (required). Use connections to see available databases.",
 		},
 		"table_name": map[string]interface{}{
 			"type":        "string",
@@ -890,7 +890,7 @@ type ExecuteReadTool struct {
 }
 
 func (t *ExecuteReadTool) Name() string {
-	return "oracle_execute_read"
+	return "execute_read"
 }
 
 func (t *ExecuteReadTool) Description() string {
@@ -905,7 +905,7 @@ func (t *ExecuteReadTool) Schema() mcp.ToolInputSchema {
 	props := map[string]interface{}{
 		"database": map[string]interface{}{
 			"type":        "string",
-			"description": "Database connection label (required). Use oracle_connections to see available databases.",
+			"description": "Database connection label (required). Use connections to see available databases.",
 		},
 		"sql": map[string]interface{}{
 			"type":        "string",
@@ -953,7 +953,7 @@ func (t *ExecuteReadTool) Handle(ctx framework.CallContext, args map[string]inte
 
 	// Ensure it's a SELECT query
 	if !isSelectQuery(sql) {
-		return framework.TextResult(""), fmt.Errorf("only SELECT queries are allowed with oracle_execute_read. Use oracle_execute_write for DML statements.")
+		return framework.TextResult(""), fmt.Errorf("only SELECT queries are allowed with execute_read. Use execute_write for DML statements.")
 	}
 
 	// Extract params map — may be nil for plain queries
@@ -1029,7 +1029,7 @@ type ExecuteWriteTool struct {
 }
 
 func (t *ExecuteWriteTool) Name() string {
-	return "oracle_execute_write"
+	return "execute_write"
 }
 
 func (t *ExecuteWriteTool) Description() string {
@@ -1044,7 +1044,7 @@ func (t *ExecuteWriteTool) Schema() mcp.ToolInputSchema {
 	props := map[string]interface{}{
 		"database": map[string]interface{}{
 			"type":        "string",
-			"description": "Database connection label (required). Use oracle_connections to see available databases.",
+			"description": "Database connection label (required). Use connections to see available databases.",
 		},
 		"sql": map[string]interface{}{
 			"type":        "string",
@@ -1089,7 +1089,7 @@ func (t *ExecuteWriteTool) Handle(ctx framework.CallContext, args map[string]int
 
 	// Check if it's a write operation
 	if !isWriteQuery(sql) {
-		return framework.TextResult(""), fmt.Errorf("only INSERT, UPDATE, DELETE queries are allowed with oracle_execute_write")
+		return framework.TextResult(""), fmt.Errorf("only INSERT, UPDATE, DELETE queries are allowed with execute_write")
 	}
 
 	// Check read-only mode
@@ -1151,7 +1151,7 @@ type ExplainQueryTool struct {
 }
 
 func (t *ExplainQueryTool) Name() string {
-	return "oracle_explain_query"
+	return "explain_query"
 }
 
 func (t *ExplainQueryTool) Description() string {
@@ -1166,7 +1166,7 @@ func (t *ExplainQueryTool) Schema() mcp.ToolInputSchema {
 	props := map[string]interface{}{
 		"database": map[string]interface{}{
 			"type":        "string",
-			"description": "Database connection label (required). Use oracle_connections to see available databases.",
+			"description": "Database connection label (required). Use connections to see available databases.",
 		},
 		"sql": map[string]interface{}{
 			"type":        "string",

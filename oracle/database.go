@@ -230,7 +230,7 @@ func (r *DatabaseRegistry) GetConnection(label string) (*Connection, error) {
 	r.mu.RUnlock()
 
 	if !exists {
-		return nil, fmt.Errorf("unknown database connection: %s (use oracle_connections to see available connections)", label)
+		return nil, fmt.Errorf("unknown database connection: %s (use connections to see available connections)", label)
 	}
 
 	// If already connected, return it

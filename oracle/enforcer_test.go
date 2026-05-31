@@ -44,16 +44,16 @@ func TestHandshakeMetadataPresence(t *testing.T) {
 
 	// Verify specific tools exist
 	requiredTools := []string{
-		"oracle_list_tables",
-		"oracle_describe_table",
-		"oracle_search_tables",
-		"oracle_search_columns",
-		"oracle_get_constraints",
-		"oracle_get_indexes",
-		"oracle_get_related_tables",
-		"oracle_explain_query",
-		"oracle_execute_read",
-		"oracle_execute_write",
+		"list_tables",
+		"describe_table",
+		"search_tables",
+		"search_columns",
+		"get_constraints",
+		"get_indexes",
+		"get_related_tables",
+		"explain_query",
+		"execute_read",
+		"execute_write",
 	}
 
 	for _, required := range requiredTools {
@@ -76,15 +76,15 @@ func TestProfileAccuracy_ExecuteWrite(t *testing.T) {
 	profile := tool.EnforcerProfile(map[string]interface{}{"commit": true})
 
 	if profile.RiskLevel != framework.RiskHigh {
-		t.Errorf("oracle_execute_write with commit=true should have RiskHigh, got %s", profile.RiskLevel)
+		t.Errorf("execute_write with commit=true should have RiskHigh, got %s", profile.RiskLevel)
 	}
 
 	if profile.ImpactScope != framework.ImpactWrite {
-		t.Errorf("oracle_execute_write should have ImpactWrite, got %s", profile.ImpactScope)
+		t.Errorf("execute_write should have ImpactWrite, got %s", profile.ImpactScope)
 	}
 
 	if !profile.ApprovalReq {
-		t.Error("oracle_execute_write with commit=true should require approval")
+		t.Error("execute_write with commit=true should require approval")
 	}
 }
 
@@ -93,15 +93,15 @@ func TestProfileAccuracy_ListTables(t *testing.T) {
 	profile := tool.EnforcerProfile(nil)
 
 	if profile.RiskLevel != framework.RiskLow {
-		t.Errorf("oracle_list_tables should have RiskLow, got %s", profile.RiskLevel)
+		t.Errorf("list_tables should have RiskLow, got %s", profile.RiskLevel)
 	}
 
 	if profile.ImpactScope != framework.ImpactRead {
-		t.Errorf("oracle_list_tables should have ImpactRead, got %s", profile.ImpactScope)
+		t.Errorf("list_tables should have ImpactRead, got %s", profile.ImpactScope)
 	}
 
 	if profile.ApprovalReq {
-		t.Error("oracle_list_tables should not require approval")
+		t.Error("list_tables should not require approval")
 	}
 }
 
@@ -110,19 +110,19 @@ func TestProfileAccuracy_ExecuteRead(t *testing.T) {
 	profile := tool.EnforcerProfile(nil)
 
 	if profile.RiskLevel != framework.RiskMed {
-		t.Errorf("oracle_execute_read should have RiskMed, got %s", profile.RiskLevel)
+		t.Errorf("execute_read should have RiskMed, got %s", profile.RiskLevel)
 	}
 
 	if profile.ImpactScope != framework.ImpactRead {
-		t.Errorf("oracle_execute_read should have ImpactRead, got %s", profile.ImpactScope)
+		t.Errorf("execute_read should have ImpactRead, got %s", profile.ImpactScope)
 	}
 
 	if !profile.ApprovalReq {
-		t.Error("oracle_execute_read should require approval")
+		t.Error("execute_read should require approval")
 	}
 
 	if profile.ResourceCost != 8 {
-		t.Errorf("oracle_execute_read should have ResourceCost 8, got %d", profile.ResourceCost)
+		t.Errorf("execute_read should have ResourceCost 8, got %d", profile.ResourceCost)
 	}
 }
 
